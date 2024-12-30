@@ -1,0 +1,57 @@
+export const columns = [
+  {
+    title: '',
+    type: 'selection',
+    width: '50px',
+    fixed: 'left',
+  },
+  // {
+  //   title: '#',
+  //   type: 'index',
+  //   width: '50px',
+  //   fixed: 'left',
+  // },
+  {
+    key: 'name',
+    title: '角色名',
+    align: 'center',
+    minWidth: '100px',
+    showOverflowTooltip: true,
+  },
+  {
+    key: 'code',
+    title: '角色编码',
+    align: 'center',
+    minWidth: '100px',
+    showOverflowTooltip: true,
+  },
+  {
+    key: 'describe',
+    title: '描述',
+    align: 'left',
+    minWidth: '200px',
+    showOverflowTooltip: true,
+  },
+  {
+    key: 'createTime',
+    title: '创建时间',
+    sortable: 'custom',
+    align: 'center',
+    width: '180px',
+  },
+  {
+    key: 'updateTime',
+    title: '修改时间',
+    sortable: 'custom',
+    align: 'center',
+    width: '180px',
+  },
+  {
+    key: 'operator',
+    title: '操作',
+    align: 'center',
+    width: '180px',
+    customSlot: 'operator',
+    fixed: 'right',
+  },
+]

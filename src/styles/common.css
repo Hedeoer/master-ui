@@ -1,0 +1,34 @@
+/** zeta-web-element 公共样式 */
+
+/** 容器 */
+.z-container {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.z-search-layout {
+  margin-top: 10px;
+}
+
+.z-table-box {
+  padding: 10px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  background-color: var(--el-fill-color-blank);
+}
+.dark .z-table-box {
+  background-color: var(--el-bg-color-overlay);
+}
+
+/** TODO: 辅助类...  */
+
+/** 辅助类：文字居中 */
+.z-text-center {
+  text-align: center
+}
+
+/** 辅助类：文字不允许选中 */
+.z-user-select-none {
+  -webkit-user-select: none;
+  user-select: none;
+}

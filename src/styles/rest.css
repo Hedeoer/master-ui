@@ -1,0 +1,152 @@
+/** zeta-web-element-plus 自定义样式，样式覆盖 */
+
+/** 表单label... 文字不允许选中 */
+.el-form-item__label {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/** border园角度 */
+.el-card {
+  --el-card-border-radius: 6px!important;
+}
+
+
+/** 抽屉头部高度 */
+.el-drawer__header {
+  margin-bottom: 0;
+}
+
+/** 去除下拉菜单边框 */
+.el-tooltip__trigger:focus-visible {
+  outline: none;
+}
+/** 去除下拉菜单三角箭头 */
+.el-popper__arrow {
+  display: none;
+  top: 0;
+}
+
+/** 解决控制台警告 */
+input[aria-hidden=true] {
+  display: none !important;
+}
+
+/** 容器内的card */
+.z-container .el-card {
+  margin-bottom: 10px;
+  border: none;
+}
+
+/** 按钮内的icon */
+.el-button span .el-icon {
+  margin-right: 4px;
+}
+/** 按钮间距 */
+.el-button+.el-button {
+  margin-left: 10px;
+}
+.el-button--small {
+  padding: 10px;
+}
+
+/** e-table组件样式修改 */
+.e-table-popover.el-popover.el-popper {
+  padding-right: 0;
+}
+
+/** e-action-group组件样式修改 */
+.e-action-popover.el-popover.el-popper {
+  padding: 0;
+  min-width: 100px;
+}
+.e-action-popover .dropdown {
+  padding: 5px 0;
+}
+.e-action-popover .dropdown div {
+  height: 22px;
+  line-height: 22px;
+  cursor: pointer;
+  padding: 5px 10px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.e-action-popover .dropdown div:hover {
+  background-color: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+
+/** loading-box组件修改 */
+.loading-box.el-message-box .el-message-box__btns {
+  padding: 0;
+}
+.loading-box.el-message-box {
+  width: auto;
+}
+
+/** 虚线边框按钮 */
+.btn_dashed_line {
+  border: 1px dashed var(--el-border-color);
+  background-color: var(--el-fill-color-blank);
+  color: var(--el-text-color-regular);
+}
+.btn_dashed_line:hover {
+  border: 1px dashed var(--el-border-color);
+  background-color: var(--el-fill-color-blank);
+  color: var(--el-text-color-placeholder);
+}
+/** 虚线边框按钮-primary */
+.btn_dashed_line_primary {
+  border: 1px dashed var(--el-color-primary);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-primary);
+}
+.btn_dashed_line_primary:hover {
+  border: 1px dashed var(--el-color-primary);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-primary-light-5);
+}
+/** 虚线边框按钮-success */
+.btn_dashed_line_success {
+  border: 1px dashed var(--el-color-success);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-success);
+}
+.btn_dashed_line_success:hover {
+  border: 1px dashed var(--el-color-success);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-success-light-5);
+}
+/** 虚线边框按钮-error */
+.btn_dashed_line_error {
+  border: 1px dashed var(--el-color-error);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-error);
+}
+.btn_dashed_line_error:hover {
+  border: 1px dashed var(--el-color-error);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-error-light-5);
+}
+/** 虚线边框按钮-waring */
+.btn_dashed_line_waring {
+  border: 1px dashed var(--el-color-waring);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-waring);
+}
+.btn_dashed_line_waring:hover {
+  border: 1px dashed var(--el-color-waring);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-waring-light-5);
+}
+/** 虚线边框按钮-info */
+.btn_dashed_line_info {
+  border: 1px dashed var(--el-color-info);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-info);
+}
+.btn_dashed_line_info:hover {
+  border: 1px dashed var(--el-color-info);
+  background-color: var(--el-bg-color);
+  color: var(--el-color-info-light-5);
+}
