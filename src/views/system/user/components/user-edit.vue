@@ -139,7 +139,7 @@ async function saveData(model: SysUser, close: () => void) {
     // 新增用户
     const { success, message } = await addUserApi({
       ...model as SysUserSaveParam,
-      ...{ roleIds: roles.value },
+      ...{ roleIds: roles.value || [] },
     })
     if (!success) {
       toastError(message || '操作失败')
