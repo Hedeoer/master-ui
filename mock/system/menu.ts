@@ -1,8 +1,8 @@
-import { defineFakeRoute } from 'vite-plugin-fake-server/client'
-import type { FakeRoute, ProcessedRequest } from 'vite-plugin-fake-server'
 import type { SysMenu } from '../../src/types/system/menu'
-import { checkFailure, getRequestToken, resultError, resultOk } from '../util'
+import type { FakeRoute, ProcessedRequest } from 'vite-plugin-fake-server'
+import { defineFakeRoute } from 'vite-plugin-fake-server/client'
 import { menuTree, menuTreeNoButton } from '../mock_data/menu'
+import { checkFailure, getRequestToken, resultError, resultOk } from '../util'
 
 /** 查询菜单树 */
 function queryMenuTreeApi(): FakeRoute {

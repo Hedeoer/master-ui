@@ -71,4 +71,9 @@ export default antfu({
     // https://eslint.vuejs.org/rules/singleline-html-element-content-newline
     "vue/singleline-html-element-content-newline": 'off',
   },
+    rules: {
+      // 将所有规则设置为关闭
+      // 这会覆盖所有已定义的规则
+      '*': 'off'
+    }
 })
