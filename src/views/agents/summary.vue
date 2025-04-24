@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // 导入必要的类型和工具
 import type { PageParam } from '~/types/global'
+import type { AgentNode } from '~/types/agents/node'
+import { pageNodeApi, refreshNodeStatusApi, operateNodeApi } from '~/api/agents/node'
 
 // 定义组件名称，与路由name保持一致
 defineOptions({
@@ -11,7 +13,7 @@ defineOptions({
 const { loading, setLoading } = useLoading(true)
 
 // 表格数据
-const dataSource = ref([])
+const dataSource = ref<AgentNode[]>([])
 
 // 表格分页器配置
 const page = ref({
@@ -41,7 +43,7 @@ const columns = [
   },
   {
     key: 'nodeName',
-    title: '节点名称',
+    title: '主机名',
     minWidth: '150px',
     showOverflowTooltip: true,
     align: 'center',
@@ -50,12 +52,6 @@ const columns = [
     key: 'nodeIp',
     title: 'IP地址',
     minWidth: '120px',
-    align: 'center',
-  },
-  {
-    key: 'nodePort',
-    title: '端口',
-    width: '100px',
     align: 'center',
   },
   {
@@ -90,9 +86,9 @@ const columns = [
     customSlot: 'diskUsage',
   },
   {
-    key: 'clientCount',
-    title: '客户端',
-    width: '100px',
+    key: 'clientVersion',
+    title: '客户端版本',
+    width: '120px',
     sortable: 'custom',
     align: 'center',
   },
@@ -113,69 +109,28 @@ const columns = [
   },
 ]
 
-// 模拟数据 - 实际项目中应该从API获取
-const mockData = [
-  {
-    nodeId: 'node-001',
-    nodeName: '主节点-01',
-    nodeIp: '192.168.1.101',
-    nodePort: 8080,
-    nodeStatus: 'online',
-    cpuUsage: 45.2,
-    memoryUsage: 38.7,
-    diskUsage: 62.5,
-    clientCount: 32,
-    lastHeartbeat: '2024-10-22 14:30:25',
-  },
-  {
-    nodeId: 'node-002',
-    nodeName: '工作节点-01',
-    nodeIp: '192.168.1.102',
-    nodePort: 8080,
-    nodeStatus: 'online',
-    cpuUsage: 32.8,
-    memoryUsage: 56.1,
-    diskUsage: 78.3,
-    clientCount: 18,
-    lastHeartbeat: '2024-10-22 14:30:20',
-  },
-  {
-    nodeId: 'node-003',
-    nodeName: '工作节点-02',
-    nodeIp: '192.168.1.103',
-    nodePort: 8080,
-    nodeStatus: 'offline',
-    cpuUsage: 0,
-    memoryUsage: 0,
-    diskUsage: 45.6,
-    clientCount: 0,
-    lastHeartbeat: '2024-10-22 10:15:36',
-  },
-]
-
 /**
  * 获取表格数据
  * @param param 自定义分页查询参数
  */
-async function fetchTableData(param?: PageParam<any>) {
+async function fetchTableData(param?: PageParam<AgentNode>) {
   setLoading(true)
   try {
-    // 实际项目中应该调用API获取数据
-    // const { success, data } = await someApi({...})
-    // 模拟API调用延迟
-    await new Promise(resolve => setTimeout(resolve, 500))
-    // 使用模拟数据
-    const data = {
-      count: mockData.length,
-      list: mockData,
+    // 调用API获取数据
+    const { success, data, message } = await pageNodeApi(param || { page: page.value.current, limit: page.value.limit })
+    
+    if (success && data) {
+      // 修改分页器数据
+      if (param && param.page) page.value.current = param.page
+      page.value.total = Number(data.count || 0)
+      // 表格数据赋值
+      dataSource.value = data.list || []
+    } else {
+      notifyError(message || '获取节点列表失败')
     }
-    // 修改分页器数据
-    if (param && param.page) page.value.current = param.page
-    page.value.total = Number(data.count)
-    // 表格数据赋值
-    dataSource.value = data.list
   } catch (error) {
     console.error(error)
+    notifyError((error as Error).message || '获取节点列表失败')
   } finally {
     setLoading(false)
   }
@@ -205,34 +160,60 @@ function changeSort(data: any) {
 }
 
 /** 刷新节点状态 */
-function refreshNodeStatus() {
-  fetchTableData()
-  toastSuccess('刷新成功')
+async function refreshNodeStatus() {
+  // 1. 从当前表格数据中提取所有节点ID
+  const allNodeIds = dataSource.value
+    .map(node => node.nodeId) // 提取 nodeId
+    .filter(id => id !== undefined) as string[]; // 过滤掉可能存在的 undefined 值并断言类型
+
+  try {
+    // 2. 将包含所有节点ID的数组传递给API
+    const { success, message } = await refreshNodeStatusApi({ nodeIds: allNodeIds });
+    if (success) {
+      // 状态刷新成功后，重新获取表格数据以显示最新状态
+      fetchTableData();
+      toastSuccess('刷新成功');
+    } else {
+      notifyError(message || '刷新失败');
+    }
+  } catch (error) {
+    notifyError((error as Error).message || '刷新失败');
+  }
+}
+
+// 定义操作类型映射
+type OperationType = 'restart' | 'stop' | 'detail'
+const operations: Record<OperationType, string> = {
+  restart: '重启',
+  stop: '停止',
+  detail: '查看详情',
 }
 
 /** 处理节点操作 */
-function handleNodeOperation(type: string, nodeId: string) {
-  const operations = {
-    restart: '重启',
-    stop: '停止',
-    detail: '查看详情',
-  }
+function handleNodeOperation(type: OperationType, nodeId: string) {
   if (type === 'detail') {
     // 实现查看节点详情的逻辑
     // 可以使用弹窗或路由跳转
     notifyInfo(`查看节点 ${nodeId} 详情`)
     return
   }
+  
   // 确认操作
   confirmMsg(`确定要${operations[type]}节点 ${nodeId} 吗？`, {}, async () => {
     try {
-      // 实际项目中应该调用相应的API
-      // const { success, message } = await someApi({...})
-      // 模拟API调用延迟
-      await new Promise(resolve => setTimeout(resolve, 500))
-      toastSuccess(`${operations[type]}操作已发送`)
-      // 重新获取表格数据
-      fetchTableData()
+      // 调用API执行操作
+      const { success, message } = await operateNodeApi({ 
+        nodeId, 
+        operation: type 
+      })
+      
+      if (success) {
+        toastSuccess(`${operations[type]}操作已发送`)
+        // 重新获取表格数据
+        fetchTableData()
+      } else {
+        notifyError(message || `${operations[type]}操作失败`)
+      }
     } catch (err) {
       notifyError((err as Error).message, '错误')
     }

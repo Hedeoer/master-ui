@@ -75,6 +75,7 @@ declare global {
   const getDictItemApi: typeof import('./api/system/dictItem')['getDictItemApi']
   const getFileApi: typeof import('./api/system/file')['getFileApi']
   const getLoginLogApi: typeof import('./api/system/loginLog')['getLoginLogApi']
+  const getNodeDetailApi: typeof import('./api/agents/node')['getNodeDetailApi']
   const getOptLogApi: typeof import('./api/system/optLog')['getOptLogApi']
   const getRoleApi: typeof import('./api/system/role')['getRoleApi']
   const getUserApi: typeof import('./api/system/user')['getUserApi']
@@ -137,11 +138,13 @@ declare global {
   const onUnmounted: typeof import('vue')['onUnmounted']
   const onUpdated: typeof import('vue')['onUpdated']
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
+  const operateNodeApi: typeof import('./api/agents/node')['operateNodeApi']
   const pageDictApi: typeof import('./api/system/dict')['pageDictApi']
   const pageDictItemApi: typeof import('./api/system/dictItem')['pageDictItemApi']
   const pageFileApi: typeof import('./api/system/file')['pageFileApi']
   const pageJobApi: typeof import('./api/job/job')['pageJobApi']
   const pageLoginLogApi: typeof import('./api/system/loginLog')['pageLoginLogApi']
+  const pageNodeApi: typeof import('./api/agents/node')['pageNodeApi']
   const pageOptLogApi: typeof import('./api/system/optLog')['pageOptLogApi']
   const pageRoleApi: typeof import('./api/system/role')['pageRoleApi']
   const pageTaskLogApi: typeof import('./api/job/taskLog')['pageTaskLogApi']
@@ -170,6 +173,7 @@ declare global {
   const refDefault: typeof import('@vueuse/core')['refDefault']
   const refThrottled: typeof import('@vueuse/core')['refThrottled']
   const refWithControl: typeof import('@vueuse/core')['refWithControl']
+  const refreshNodeStatusApi: typeof import('./api/agents/node')['refreshNodeStatusApi']
   const resetUserPasswordApi: typeof import('./api/system/user')['resetUserPasswordApi']
   const resolveComponent: typeof import('vue')['resolveComponent']
   const resolveRef: typeof import('@vueuse/core')['resolveRef']
@@ -496,6 +500,7 @@ declare module 'vue' {
     readonly getDictItemApi: UnwrapRef<typeof import('./api/system/dictItem')['getDictItemApi']>
     readonly getFileApi: UnwrapRef<typeof import('./api/system/file')['getFileApi']>
     readonly getLoginLogApi: UnwrapRef<typeof import('./api/system/loginLog')['getLoginLogApi']>
+    readonly getNodeDetailApi: UnwrapRef<typeof import('./api/agents/node')['getNodeDetailApi']>
     readonly getOptLogApi: UnwrapRef<typeof import('./api/system/optLog')['getOptLogApi']>
     readonly getRoleApi: UnwrapRef<typeof import('./api/system/role')['getRoleApi']>
     readonly getUserApi: UnwrapRef<typeof import('./api/system/user')['getUserApi']>
@@ -558,11 +563,13 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly operateNodeApi: UnwrapRef<typeof import('./api/agents/node')['operateNodeApi']>
     readonly pageDictApi: UnwrapRef<typeof import('./api/system/dict')['pageDictApi']>
     readonly pageDictItemApi: UnwrapRef<typeof import('./api/system/dictItem')['pageDictItemApi']>
     readonly pageFileApi: UnwrapRef<typeof import('./api/system/file')['pageFileApi']>
     readonly pageJobApi: UnwrapRef<typeof import('./api/job/job')['pageJobApi']>
     readonly pageLoginLogApi: UnwrapRef<typeof import('./api/system/loginLog')['pageLoginLogApi']>
+    readonly pageNodeApi: UnwrapRef<typeof import('./api/agents/node')['pageNodeApi']>
     readonly pageOptLogApi: UnwrapRef<typeof import('./api/system/optLog')['pageOptLogApi']>
     readonly pageRoleApi: UnwrapRef<typeof import('./api/system/role')['pageRoleApi']>
     readonly pageTaskLogApi: UnwrapRef<typeof import('./api/job/taskLog')['pageTaskLogApi']>
@@ -591,6 +598,7 @@ declare module 'vue' {
     readonly refDefault: UnwrapRef<typeof import('@vueuse/core')['refDefault']>
     readonly refThrottled: UnwrapRef<typeof import('@vueuse/core')['refThrottled']>
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
+    readonly refreshNodeStatusApi: UnwrapRef<typeof import('./api/agents/node')['refreshNodeStatusApi']>
     readonly resetUserPasswordApi: UnwrapRef<typeof import('./api/system/user')['resetUserPasswordApi']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
