@@ -30,6 +30,7 @@ import {
 import { Search, Position, Delete, Edit, Plus, Warning, Operation, Setting, InfoFilled, ArrowLeft } from '@element-plus/icons-vue';
 import TableSetting from '../../components/TableSetting.vue';
 import type { FormInstance, FormRules } from 'element-plus';
+import { useRoute } from 'vue-router';
 
 // 定义组件名称，与路由name保持一致
 defineOptions({
@@ -967,13 +968,422 @@ watch(() => firewallStatus.value, (newStatus) => {
   }
 });
 
-// 初始化
-onMounted(() => {
-  // 模拟加载数据
+// --- 节点相关数据 ---
+const route = useRoute();
+const currentNodeId = ref<string>('');
+const currentNodeName = ref<string>('');
+const currentNodeIp = ref<string>('');
+const nodeList = ref<Array<{id: string, name: string, ip: string}>>([]);
+// 添加新的状态来管理最近访问的节点
+const recentNodes = ref<Array<{id: string, name: string, ip: string}>>([]);
+const searchQuery = ref('');
+const remoteLoading = ref(false);
+const maxRecentNodes = 5; // 最多保存5个最近访问节点
+
+// 从localStorage加载最近访问的节点
+const loadRecentNodes = () => {
+  try {
+    const savedNodes = localStorage.getItem('firewall-recent-nodes');
+    if (savedNodes) {
+      recentNodes.value = JSON.parse(savedNodes);
+    }
+  } catch (error) {
+    console.error('加载最近访问节点失败:', error);
+  }
+};
+
+// 保存最近访问的节点到localStorage
+const saveRecentNodes = () => {
+  try {
+    localStorage.setItem('firewall-recent-nodes', JSON.stringify(recentNodes.value));
+  } catch (error) {
+    console.error('保存最近访问节点失败:', error);
+  }
+};
+
+// 添加节点到最近访问列表
+const addToRecentNodes = (nodeId: string) => {
+  const node = nodeList.value.find(n => n.id === nodeId);
+  if (!node) return;
+
+  // 如果节点已经在列表中，先移除它
+  const existingIndex = recentNodes.value.findIndex(n => n.id === nodeId);
+  if (existingIndex !== -1) {
+    recentNodes.value.splice(existingIndex, 1);
+  }
+
+  // 在列表开头添加节点
+  recentNodes.value.unshift(node);
+
+  // 如果超过最大数量，移除最后一个
+  if (recentNodes.value.length > maxRecentNodes) {
+    recentNodes.value.pop();
+  }
+
+  // 保存到localStorage
+  saveRecentNodes();
+};
+
+// 远程搜索节点
+const remoteSearchNodes = (query: string) => {
+  if (query) {
+    remoteLoading.value = true;
+    searchQuery.value = query;
+    
+    // 模拟搜索延迟
+    setTimeout(() => {
+      remoteLoading.value = false;
+    }, 200);
+  } else {
+    searchQuery.value = '';
+  }
+};
+
+// 计算过滤后的节点列表
+const filteredNodeList = computed(() => {
+  if (!searchQuery.value) return nodeList.value;
+  
+  const loweredQuery = searchQuery.value.toLowerCase();
+  return nodeList.value.filter(node => 
+    node.id.toLowerCase().includes(loweredQuery) || 
+    node.name.toLowerCase().includes(loweredQuery) || 
+    node.ip.toLowerCase().includes(loweredQuery)
+  );
+});
+
+// 加载节点列表（模拟）
+const fetchNodeList = (): Promise<any> => {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      // 模拟节点数据
+      nodeList.value = [
+        { id: 'node1', name: 'server-01', ip: '192.168.1.100' },
+        { id: 'node2', name: 'server-02', ip: '192.168.1.101' },
+        { id: 'node3', name: 'server-03', ip: '192.168.1.102' },
+        { id: 'node4', name: 'server-04', ip: '192.168.1.103' },
+      ];
+      resolve({ success: true, data: nodeList.value });
+    }, 300);
+  });
+};
+
+// 设置当前节点
+const setCurrentNode = (nodeId: string) => {
+  const node = nodeList.value.find(n => n.id === nodeId);
+  if (node) {
+    currentNodeId.value = node.id;
+    currentNodeName.value = node.name;
+    currentNodeIp.value = node.ip;
+  }
+};
+
+// 根据节点ID获取端口规则（模拟API）
+const fetchPortRulesByNodeId = (nodeId: string): Promise<any> => {
+  return new Promise((resolve) => {
+    // 记录当前的分页和筛选状态
+    const currentPage = portPagination.currentPage;
+    const currentSize = portPagination.pageSize;
+    
+    // 设置加载状态
+    loading.value = true;
+    
+    setTimeout(() => {
+      // 模拟不同节点有不同数据
+      let rules: PortRule[] = [];
+      
+      if (nodeId === 'node1') {
+        rules = [
+          { 
+            id: 1, 
+            protocol: 'TCP', 
+            port: '22', 
+            strategy: 'accept' as 'accept' | 'drop', 
+            address: 'Anywhere', 
+            description: 'SSH服务', 
+            usedStatus: 'inUsed',
+            zone: 'public',
+            family: 'ipv4',
+            permanent: true
+          },
+          { 
+            id: 2, 
+            protocol: 'TCP', 
+            port: '80', 
+            strategy: 'accept' as 'accept' | 'drop', 
+            address: 'Anywhere', 
+            description: 'HTTP服务', 
+            usedStatus: 'inUsed',
+            zone: 'public',
+            family: 'both',
+            permanent: true
+          },
+          // 其他已有样例数据...
+        ];
+      } else if (nodeId === 'node2') {
+        rules = [
+          { 
+            id: 1, 
+            protocol: 'TCP', 
+            port: '3306', 
+            strategy: 'accept' as 'accept' | 'drop', 
+            address: '192.168.1.0/24', 
+            description: 'MySQL数据库', 
+            usedStatus: 'inUsed',
+            zone: 'internal',
+            family: 'ipv4',
+            permanent: true
+          },
+          { 
+            id: 2, 
+            protocol: 'TCP', 
+            port: '5432', 
+            strategy: 'accept' as 'accept' | 'drop', 
+            address: '192.168.1.0/24', 
+            description: 'PostgreSQL数据库', 
+            usedStatus: 'inUsed',
+            zone: 'internal',
+            family: 'ipv4',
+            permanent: true
+          },
+        ];
+      } else if (nodeId === 'node3') {
+        rules = [
+          { 
+            id: 1, 
+            protocol: 'TCP', 
+            port: '6379', 
+            strategy: 'accept' as 'accept' | 'drop', 
+            address: '192.168.1.0/24', 
+            description: 'Redis服务', 
+            usedStatus: 'inUsed',
+            zone: 'internal',
+            family: 'ipv4',
+            permanent: true
+          },
+          { 
+            id: 2, 
+            protocol: 'TCP', 
+            port: '27017', 
+            strategy: 'accept' as 'accept' | 'drop', 
+            address: '192.168.1.0/24', 
+            description: 'MongoDB服务', 
+            usedStatus: 'inUsed',
+            zone: 'internal',
+            family: 'ipv4',
+            permanent: true
+          },
+        ];
+      } else {
+        // 默认数据
+        rules = [
+          { 
+            id: 1, 
+            protocol: 'TCP', 
+            port: '22', 
+            strategy: 'accept' as 'accept' | 'drop', 
+            address: 'Anywhere', 
+            description: '默认SSH服务', 
+            usedStatus: 'inUsed',
+            zone: 'public',
+            family: 'ipv4',
+            permanent: true
+          },
+        ];
+      }
+      
+      // 更新数据
+      portRules.value = rules;
+      
+      // 恢复分页状态
+      portPagination.currentPage = currentPage;
+      portPagination.pageSize = currentSize;
+      
+      // 重置加载状态
+      loading.value = false;
+      
+      resolve({ success: true, data: rules });
+    }, 600);
+  });
+};
+
+// 根据节点ID获取IP规则（模拟API）
+const fetchIpRulesByNodeId = (nodeId: string): Promise<any> => {
+  return new Promise((resolve) => {
+    // 记录当前的分页和筛选状态
+    const currentPage = ipPagination.currentPage;
+    const currentSize = ipPagination.pageSize;
+    
+    // 设置加载状态
+    loading.value = true;
+    
+    setTimeout(() => {
+      // 模拟不同节点有不同数据
+      let rules: IPRule[] = [];
+      
+      if (nodeId === 'node1') {
+        rules = [
+          { id: 1, address: '192.168.1.100', strategy: 'accept' as 'accept' | 'drop', description: '允许特定主机访问' },
+          { id: 2, address: '192.168.1.0/24', strategy: 'accept' as 'accept' | 'drop', description: '允许局域网访问' },
+          // 其他已有样例数据...
+        ];
+      } else if (nodeId === 'node2') {
+        rules = [
+          { id: 1, address: '10.0.0.1', strategy: 'accept' as 'accept' | 'drop', description: '允许管理主机' },
+          { id: 2, address: '10.0.0.0/24', strategy: 'drop' as 'accept' | 'drop', description: '拒绝其他主机' },
+        ];
+      } else if (nodeId === 'node3') {
+        rules = [
+          { id: 1, address: '172.16.1.1', strategy: 'accept' as 'accept' | 'drop', description: '允许开发主机' },
+          { id: 2, address: '172.16.0.0/16', strategy: 'drop' as 'accept' | 'drop', description: '拒绝开发网段' },
+        ];
+      } else {
+        // 默认数据
+        rules = [
+          { id: 1, address: '192.168.1.1', strategy: 'accept' as 'accept' | 'drop', description: '默认允许网关' },
+        ];
+      }
+      
+      // 更新数据
+      ipRules.value = rules;
+      
+      // 恢复分页状态
+      ipPagination.currentPage = currentPage;
+      ipPagination.pageSize = currentSize;
+      
+      // 重置加载状态
+      loading.value = false;
+      
+      resolve({ success: true, data: rules });
+    }, 600);
+  });
+};
+
+// 根据节点ID获取端口转发规则（模拟API）
+const fetchForwardRulesByNodeId = (nodeId: string): Promise<any> => {
+  return new Promise((resolve) => {
+    // 记录当前的分页和筛选状态
+    const currentPage = forwardPagination.currentPage;
+    const currentSize = forwardPagination.pageSize;
+    
+    // 设置加载状态
+    loading.value = true;
+    
+    setTimeout(() => {
+      // 模拟不同节点有不同数据
+      let rules = [];
+      
+      if (nodeId === 'node1') {
+        rules = [
+          { id: 1, srcPort: '80', dstPort: '8080', dstAddr: '192.168.1.100', protocol: 'tcp', description: '转发Web流量' },
+          { id: 2, srcPort: '443', dstPort: '8443', dstAddr: '192.168.1.100', protocol: 'tcp', description: '转发安全Web流量' },
+          // ... 保留其他已有样例数据 ...
+        ];
+      } else if (nodeId === 'node2') {
+        rules = [
+          { id: 1, srcPort: '3306', dstPort: '13306', dstAddr: '192.168.10.10', protocol: 'tcp', description: '转发MySQL流量' },
+          { id: 2, srcPort: '5432', dstPort: '15432', dstAddr: '192.168.10.11', protocol: 'tcp', description: '转发PostgreSQL流量' },
+        ];
+      } else if (nodeId === 'node3') {
+        rules = [
+          { id: 1, srcPort: '27017', dstPort: '37017', dstAddr: '192.168.20.10', protocol: 'tcp', description: '转发MongoDB流量' },
+          { id: 2, srcPort: '6379', dstPort: '16379', dstAddr: '192.168.20.11', protocol: 'tcp', description: '转发Redis流量' },
+        ];
+      } else {
+        // 默认数据
+        rules = [
+          { id: 1, srcPort: '22', dstPort: '2222', dstAddr: '10.0.0.1', protocol: 'tcp', description: '默认SSH转发' },
+        ];
+      }
+      
+      // 更新数据
+      forwardRules.value = rules;
+      
+      // 恢复分页状态
+      forwardPagination.currentPage = currentPage;
+      forwardPagination.pageSize = currentSize;
+      
+      // 重置加载状态
+      loading.value = false;
+      
+      resolve({ success: true, data: rules });
+    }, 600);
+  });
+};
+
+// 加载指定节点的数据
+const loadNodeData = async (nodeId: string) => {
+  setCurrentNode(nodeId);
+  
+  // 添加到最近访问
+  addToRecentNodes(nodeId);
+  
+  // 根据当前标签加载不同类型的数据
+  if (activeTab.value === 'port') {
+    await fetchPortRulesByNodeId(nodeId);
+  } else if (activeTab.value === 'ip') {
+    await fetchIpRulesByNodeId(nodeId);
+  } else if (activeTab.value === 'forward') {
+    await fetchForwardRulesByNodeId(nodeId);
+  }
+};
+
+// 监听标签页变化，加载对应数据
+watch(activeTab, (newTab) => {
+  if (currentNodeId.value) {
+    if (newTab === 'port') {
+      fetchPortRulesByNodeId(currentNodeId.value);
+    } else if (newTab === 'ip') {
+      fetchIpRulesByNodeId(currentNodeId.value);
+    } else if (newTab === 'forward') {
+      fetchForwardRulesByNodeId(currentNodeId.value);
+    }
+  }
+  
+  // 如果设置了定时刷新，仍然保留原有逻辑
+  if (refreshRate.value !== '不刷新') {
+    refreshData();
+  }
+});
+
+// 修改初始化
+onMounted(async () => {
+  // 先设置加载状态
   loading.value = true;
-  setTimeout(() => {
+  
+  try {
+    // 1. 获取节点列表
+    await fetchNodeList();
+    
+    // 2. 加载最近访问的节点
+    loadRecentNodes();
+    
+    // 3. 确定初始节点ID
+    let initialNodeId = '';
+    
+    // 检查URL参数中是否有nodeId
+    if (route.query.nodeId) {
+      initialNodeId = route.query.nodeId as string;
+    } else if (recentNodes.value.length > 0) {
+      // 如果有最近访问的节点，使用第一个
+      initialNodeId = recentNodes.value[0].id;
+    } else if (nodeList.value.length > 0) {
+      // 如果没有，则使用第一个节点
+      initialNodeId = nodeList.value[0].id;
+    }
+    
+    // 4. 加载节点数据
+    if (initialNodeId) {
+      await loadNodeData(initialNodeId);
+    }
+  } catch (error) {
+    console.error('初始化失败:', error);
+    ElMessage({
+      type: 'error',
+      message: '加载数据失败，请刷新页面重试'
+    });
+  } finally {
     loading.value = false;
-  }, 500);
+  }
 });
 </script>
 
@@ -1007,6 +1417,64 @@ onMounted(() => {
             <el-divider direction="vertical" />
             <el-button type="primary" link>禁止Ping</el-button>
             <el-switch size="small" class="ml-2" v-model="pingDisabled" @change="togglePing" />
+          </div>
+        </div>
+      </el-card>
+    </div>
+
+    <!-- 节点信息和选择器 -->
+    <div class="node-info mb-4">
+      <el-card>
+        <div class="flex justify-between items-center">
+          <div class="flex items-center gap-4">
+            <el-tag type="info">节点ID: {{ currentNodeId }}</el-tag>
+            <el-tag type="info">主机名: {{ currentNodeName }}</el-tag>
+            <el-tag type="info">IP地址: {{ currentNodeIp }}</el-tag>
+          </div>
+          <div style="width: 280px">
+            <el-select 
+              v-model="currentNodeId" 
+              placeholder="搜索节点" 
+              style="width: 100%"
+              filterable
+              remote
+              reserve-keyword
+              :remote-method="remoteSearchNodes"
+              :loading="remoteLoading"
+              @change="loadNodeData"
+              clearable
+            >
+              <template v-if="recentNodes.length > 0">
+                <el-option-group label="最近访问">
+                  <el-option
+                    v-for="node in recentNodes"
+                    :key="`recent-${node.id}`"
+                    :label="`${node.name} (${node.ip})`"
+                    :value="node.id"
+                  >
+                    <div class="flex items-center justify-between">
+                      <span>{{ node.name }}</span>
+                      <el-tag size="small" type="info">{{ node.ip }}</el-tag>
+                    </div>
+                  </el-option>
+                </el-option-group>
+                <el-divider style="margin: 5px 0" />
+              </template>
+              
+              <el-option-group label="所有节点">
+                <el-option
+                  v-for="node in filteredNodeList"
+                  :key="node.id"
+                  :label="`${node.name} (${node.ip})`"
+                  :value="node.id"
+                >
+                  <div class="flex items-center justify-between">
+                    <span>{{ node.name }}</span>
+                    <el-tag size="small" type="info">{{ node.ip }}</el-tag>
+                  </div>
+                </el-option>
+              </el-option-group>
+            </el-select>
           </div>
         </div>
       </el-card>
@@ -1545,6 +2013,25 @@ onMounted(() => {
 }
 .used-port-tag {
   margin: 3px;
+}
+/* 增强型选择器样式 */
+.el-select-dropdown__item {
+  padding: 0 15px;
+}
+.el-option-group__title {
+  font-size: 12px;
+  font-weight: bold;
+  color: #909399;
+  padding: 10px 15px 5px;
+}
+.items-center {
+  align-items: center;
+}
+.justify-between {
+  justify-content: space-between;
+}
+.el-divider--horizontal {
+  margin: 8px 0;
 }
 @media (min-width: 768px) {
   .md\:flex-row {
