@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted, computed, watch, onUnmounted } from 'vue';
 import {
   ElCard,
   ElTabs,
@@ -21,9 +21,15 @@ import {
   ElForm,
   ElFormItem,
   ElMessageBox,
-  ElDivider
+  ElDivider,
+  ElDrawer,
+  ElRadio,
+  ElRadioGroup,
+  ElMessage,
 } from 'element-plus';
-import { Search, Position, Delete, Edit, Plus, Warning, Operation } from '@element-plus/icons-vue';
+import { Search, Position, Delete, Edit, Plus, Warning, Operation, Setting, InfoFilled, ArrowLeft } from '@element-plus/icons-vue';
+import TableSetting from '../../components/TableSetting.vue';
+import type { FormInstance, FormRules } from 'element-plus';
 
 // 定义组件名称，与路由name保持一致
 defineOptions({
@@ -43,6 +49,142 @@ const firewallVersion = ref('0.36.2');
 const pingDisabled = ref(true);
 const maskShow = ref(false);
 
+// --- 刷新频率设置 ---
+const refreshRate = ref('不刷新');
+let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+// 监听刷新频率变化
+watch(refreshRate, (newRate) => {
+  // 清除之前的定时器
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  
+  // 如果选择了刷新频率，设置新的定时器
+  if (newRate !== '不刷新') {
+    const interval = parseInt(newRate) * 1000;
+    refreshTimer = setInterval(() => {
+      refreshData();
+    }, interval);
+  }
+});
+
+// 监听活动标签页变化
+watch(activeTab, () => {
+  // 如果设置了定时刷新，需要立即刷新一次当前标签页数据
+  if (refreshRate.value !== '不刷新') {
+    refreshData();
+  }
+});
+
+// 组件卸载时清除定时器
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+});
+
+// 刷新数据方法
+const refreshData = () => {
+  // 先显示加载状态
+  loading.value = true;
+  
+  // 捕获当前的筛选和分页状态
+  const currentTab = activeTab.value;
+  const currentPortPage = portPagination.currentPage;
+  const currentPortSize = portPagination.pageSize;
+  const currentPortStatus = portSearchStatus.value;
+  const currentPortStrategy = portSearchStrategy.value;
+  const currentPortQuery = portSearchQuery.value;
+  const currentPortZone = portSearchZone.value;
+  const currentPortFamily = portSearchFamily.value;
+  
+  const currentIPPage = ipPagination.currentPage;
+  const currentIPStrategy = ipSearchStrategy.value;
+  const currentIPQuery = ipSearchQuery.value;
+  
+  const currentForwardPage = forwardPagination.currentPage;
+  const currentForwardQuery = forwardSearchQuery.value;
+  
+  // 根据当前活动标签页刷新对应数据
+  if (currentTab === 'port') {
+    // 模拟API调用延迟
+    setTimeout(() => {
+      try {
+        // 重新获取端口规则数据（实际项目中应该调用实际的API）
+        // 这里只是简单模拟更新数据
+        const newData = [...portRules.value];
+        // 模拟数据变化
+        if (newData.length > 0) {
+          newData[0] = { ...newData[0], description: `SSH服务 (刷新于 ${new Date().toLocaleTimeString()})` };
+        }
+        portRules.value = newData;
+        
+        // 恢复筛选和分页状态
+        portPagination.currentPage = currentPortPage;
+        portPagination.pageSize = currentPortSize;
+        portSearchStatus.value = currentPortStatus;
+        portSearchStrategy.value = currentPortStrategy;
+        portSearchQuery.value = currentPortQuery;
+        portSearchZone.value = currentPortZone;
+        portSearchFamily.value = currentPortFamily;
+        
+        loading.value = false;
+      } catch (error) {
+        console.error('刷新端口规则数据失败:', error);
+        loading.value = false;
+      }
+    }, 500);
+  } else if (currentTab === 'ip') {
+    // 模拟API调用延迟
+    setTimeout(() => {
+      try {
+        // 重新获取IP规则数据
+        const newData = [...ipRules.value];
+        // 模拟数据变化
+        if (newData.length > 0) {
+          newData[0] = { ...newData[0], description: `允许特定主机访问 (刷新于 ${new Date().toLocaleTimeString()})` };
+        }
+        ipRules.value = newData;
+        
+        // 恢复筛选和分页状态
+        ipPagination.currentPage = currentIPPage;
+        ipSearchStrategy.value = currentIPStrategy;
+        ipSearchQuery.value = currentIPQuery;
+        
+        loading.value = false;
+      } catch (error) {
+        console.error('刷新IP规则数据失败:', error);
+        loading.value = false;
+      }
+    }, 500);
+  } else if (currentTab === 'forward') {
+    // 模拟API调用延迟
+    setTimeout(() => {
+      try {
+        // 重新获取转发规则数据
+        const newData = [...forwardRules.value];
+        // 模拟数据变化
+        if (newData.length > 0) {
+          newData[0] = { ...newData[0], description: `转发Web流量 (刷新于 ${new Date().toLocaleTimeString()})` };
+        }
+        forwardRules.value = newData;
+        
+        // 恢复筛选和分页状态
+        forwardPagination.currentPage = currentForwardPage;
+        forwardSearchQuery.value = currentForwardQuery;
+        
+        loading.value = false;
+      } catch (error) {
+        console.error('刷新转发规则数据失败:', error);
+        loading.value = false;
+      }
+    }, 500);
+  }
+};
+
 // --- 定义类型接口 ---
 interface PortRule {
   id: number;
@@ -53,6 +195,9 @@ interface PortRule {
   description: string;
   usedStatus: string | null;
   usedPorts?: string[];
+  zone: string;
+  family: 'ipv4' | 'ipv6' | 'both';
+  permanent: boolean;
 }
 
 interface IPRule {
@@ -81,7 +226,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'accept', 
     address: 'Anywhere', 
     description: 'SSH服务', 
-    usedStatus: 'inUsed' 
+    usedStatus: 'inUsed',
+    zone: 'public',
+    family: 'ipv4',
+    permanent: true
   },
   { 
     id: 2, 
@@ -90,7 +238,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'accept', 
     address: 'Anywhere', 
     description: 'HTTP服务', 
-    usedStatus: 'inUsed' 
+    usedStatus: 'inUsed',
+    zone: 'public',
+    family: 'both',
+    permanent: true
   },
   { 
     id: 3, 
@@ -99,7 +250,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'accept', 
     address: 'Anywhere', 
     description: 'HTTPS服务', 
-    usedStatus: 'inUsed' 
+    usedStatus: 'inUsed',
+    zone: 'public',
+    family: 'both',
+    permanent: true
   },
   { 
     id: 4, 
@@ -108,7 +262,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'accept', 
     address: '192.168.1.1', 
     description: '开发服务端口范围', 
-    usedStatus: null 
+    usedStatus: null,
+    zone: 'private',
+    family: 'ipv4',
+    permanent: false
   },
   { 
     id: 5, 
@@ -117,7 +274,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'accept', 
     address: 'Anywhere', 
     description: 'DNS服务', 
-    usedStatus: 'inUsed' 
+    usedStatus: 'inUsed',
+    zone: 'public',
+    family: 'both',
+    permanent: true
   },
   { 
     id: 6, 
@@ -127,7 +287,10 @@ const portRules = ref<PortRule[]>([
     address: 'Anywhere', 
     description: '禁止访问的测试端口范围', 
     usedStatus: 'inUsed',
-    usedPorts: ['8080', '8082', '8085'] 
+    usedPorts: ['8080', '8082', '8085'],
+    zone: 'internal',
+    family: 'ipv4',
+    permanent: true
   },
   { 
     id: 7, 
@@ -136,7 +299,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'drop', 
     address: 'Anywhere', 
     description: '阻止SMTP', 
-    usedStatus: null 
+    usedStatus: null,
+    zone: 'dmz',
+    family: 'ipv6',
+    permanent: true
   },
   { 
     id: 8, 
@@ -145,7 +311,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'drop', 
     address: 'Anywhere', 
     description: '阻止FTP', 
-    usedStatus: null 
+    usedStatus: null,
+    zone: 'dmz',
+    family: 'ipv4',
+    permanent: false
   },
   { 
     id: 9, 
@@ -154,7 +323,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'drop', 
     address: 'Anywhere', 
     description: '阻止远程桌面连接', 
-    usedStatus: null 
+    usedStatus: null,
+    zone: 'private',
+    family: 'both',
+    permanent: true
   },
   { 
     id: 10, 
@@ -163,7 +335,10 @@ const portRules = ref<PortRule[]>([
     strategy: 'drop', 
     address: 'Anywhere', 
     description: '阻止VNC服务', 
-    usedStatus: null 
+    usedStatus: null,
+    zone: 'internal',
+    family: 'ipv6',
+    permanent: false
   }
 ]);
 
@@ -191,6 +366,8 @@ const forwardRules = ref<ForwardRule[]>([
 const portSearchStatus = ref('');
 const portSearchStrategy = ref('');
 const portSearchQuery = ref('');
+const portSearchZone = ref('');
+const portSearchFamily = ref('');
 
 // IP规则过滤
 const ipSearchStrategy = ref('');
@@ -227,9 +404,25 @@ const selectedIPRows = ref<IPRule[]>([]);
 const selectedForwardRows = ref<ForwardRule[]>([]);
 
 // --- 计算属性：过滤后的规则 ---
+// 添加新的过滤方法
+const applyPortFilter = () => {
+  // 重置分页到第一页，避免筛选后分页问题
+  portPagination.currentPage = 1;
+};
+
 // 过滤后的端口规则
 const filteredPortRules = computed(() => {
   let result = [...portRules.value];
+  
+  // 按区域过滤
+  if (portSearchZone.value) {
+    result = result.filter(rule => rule.zone === portSearchZone.value);
+  }
+  
+  // 按IP类型过滤
+  if (portSearchFamily.value) {
+    result = result.filter(rule => rule.family === portSearchFamily.value);
+  }
   
   // 按状态过滤
   if (portSearchStatus.value) {
@@ -252,6 +445,7 @@ const filteredPortRules = computed(() => {
       rule.port.toLowerCase().includes(query) ||
       rule.protocol.toLowerCase().includes(query) ||
       rule.description.toLowerCase().includes(query) ||
+      rule.zone.toLowerCase().includes(query) ||
       (rule.address && rule.address.toLowerCase().includes(query))
     );
   }
@@ -328,10 +522,14 @@ const operateFirewall = (operation: string) => {
   setTimeout(() => {
     if (operation === 'start') {
       firewallStatus.value = 'running';
+      // 防火墙启动后刷新数据
+      refreshData();
     } else if (operation === 'stop') {
       firewallStatus.value = 'not running';
     } else if (operation === 'restart') {
       firewallStatus.value = 'running';
+      // 防火墙重启后刷新数据
+      refreshData();
     }
     loading.value = false;
   }, 1000);
@@ -339,7 +537,435 @@ const operateFirewall = (operation: string) => {
 
 const togglePing = () => {
   pingDisabled.value = !pingDisabled.value;
+  
+  // 提供视觉反馈
+  ElMessageBox.alert(
+    pingDisabled.value ? '已禁止Ping响应' : '已允许Ping响应', 
+    '设置成功',
+    { confirmButtonText: '确定' }
+  );
 };
+
+// 端口规则弹框相关状态
+const portRuleDrawerVisible = ref(false);
+const portRuleFormRef = ref<FormInstance>();
+const formMode = ref<'create' | 'edit'>('create');
+const editingRuleId = ref<number | null>(null);
+const portRuleForm = reactive({
+  protocol: 'tcp',
+  port: '',
+  sourceType: 'any',
+  sourceAddress: '',
+  strategy: 'accept',
+  zone: 'public',
+  family: 'ipv4',
+  permanent: true,
+  description: ''
+});
+
+// 表单验证规则
+const portRuleFormRules = reactive<FormRules>({
+  protocol: [
+    { required: true, message: '请选择协议', trigger: 'change' }
+  ],
+  port: [
+    { required: true, message: '请输入端口', trigger: 'blur' },
+    { 
+      validator: (rule, value, callback) => {
+        if (!value) {
+          callback(new Error('端口不能为空'))
+          return
+        }
+        
+        const portPattern = /^(\d+(-\d+)?)(,\d+(-\d+)?)*$/
+        if (!portPattern.test(value)) {
+          callback(new Error('端口格式不正确'))
+          return
+        }
+        
+        const parts = value.split(',')
+        for (const part of parts) {
+          if (part.includes('-')) {
+            const [start, end] = part.split('-').map(Number)
+            if (start > end) {
+              callback(new Error('端口范围格式不正确'))
+              return
+            }
+            if (start < 1 || end > 65535) {
+              callback(new Error('端口值必须在1-65535之间'))
+              return
+            }
+          } else {
+            const port = Number(part)
+            if (port < 1 || port > 65535) {
+              callback(new Error('端口值必须在1-65535之间'))
+              return
+            }
+          }
+        }
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ],
+  sourceAddress: [
+    { 
+      validator: (rule, value, callback) => {
+        if (portRuleForm.sourceType === 'specific' && !value) {
+          callback(new Error('请输入IP地址'))
+          return
+        }
+        
+        if (portRuleForm.sourceType === 'specific' && value) {
+          // IP地址格式验证
+          const ipAddresses = value.split(',')
+          const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/
+          const ipv6Pattern = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)$/
+          
+          for (const ip of ipAddresses) {
+            const trimmedIp = ip.trim()
+            // 检查IPv4
+            if (ipv4Pattern.test(trimmedIp)) {
+              // 验证IPv4地址值范围
+              const parts = trimmedIp.split('/')
+              const ipParts = parts[0].split('.')
+              
+              // 验证每个部分的值是否在0-255范围内
+              for (const part of ipParts) {
+                const num = parseInt(part, 10)
+                if (num < 0 || num > 255) {
+                  callback(new Error(`IP地址格式不正确: ${trimmedIp}`))
+                  return
+                }
+              }
+              
+              // 如果有CIDR，验证范围
+              if (parts.length > 1) {
+                const cidr = parseInt(parts[1], 10)
+                if (cidr < 0 || cidr > 32) {
+                  callback(new Error(`CIDR格式不正确: ${trimmedIp}`))
+                  return
+                }
+              }
+              continue
+            }
+            
+            // 检查IPv6
+            if (ipv6Pattern.test(trimmedIp)) {
+              continue
+            }
+            
+            callback(new Error(`IP地址格式不正确: ${trimmedIp}`))
+            return
+          }
+        }
+        
+        callback()
+      },
+      trigger: 'blur'
+    }
+  ],
+  strategy: [
+    { required: true, message: '请选择策略', trigger: 'change' }
+  ],
+  zone: [
+    { required: true, message: '请选择区域', trigger: 'change' }
+  ],
+  family: [
+    { required: true, message: '请选择IP类型', trigger: 'change' }
+  ],
+  description: [
+    { max: 200, message: '描述不能超过200个字符', trigger: 'blur' }
+  ]
+})
+
+// 创建端口规则
+const createPortRule = () => {
+  formMode.value = 'create';
+  editingRuleId.value = null;
+  resetPortRuleForm();
+  portRuleDrawerVisible.value = true;
+};
+
+// 重置表单
+const resetPortRuleForm = () => {
+  if (portRuleFormRef.value) {
+    portRuleFormRef.value.resetFields();
+  }
+  Object.assign(portRuleForm, {
+    protocol: 'tcp',
+    port: '',
+    sourceType: 'any',
+    sourceAddress: '',
+    strategy: 'accept',
+    zone: 'public',
+    family: 'ipv4',
+    permanent: true,
+    description: ''
+  });
+};
+
+// 添加模拟API调用函数（实际项目中应替换为真实API调用）
+const addPortRule = (ruleData: any): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    // 模拟网络延迟
+    setTimeout(() => {
+      try {
+        // 模拟成功回调，实际项目中应调用真实API
+        console.log('API请求数据:', ruleData);
+        
+        // 模拟生成一个新ID
+        const newId = Math.max(...portRules.value.map(item => item.id), 0) + 1;
+        
+        // 创建新规则对象
+        const newRule = {
+          id: newId,
+          protocol: ruleData.protocol.toUpperCase(),
+          port: ruleData.port,
+          strategy: ruleData.strategy,
+          address: ruleData.source === 'any' ? 'Anywhere' : ruleData.source,
+          description: ruleData.description,
+          usedStatus: null,
+          zone: ruleData.zone,
+          family: ruleData.family,
+          permanent: ruleData.permanent
+        };
+        
+        // 添加到列表中
+        portRules.value.unshift(newRule);
+        
+        resolve({ success: true, data: newRule });
+      } catch (error) {
+        reject(error);
+      }
+    }, 800); // 模拟网络延迟
+  });
+};
+
+// 添加模拟更新API调用函数
+const updatePortRule = (ruleId: number, ruleData: any): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    // 模拟网络延迟
+    setTimeout(() => {
+      try {
+        // 模拟成功回调，实际项目中应调用真实API
+        console.log('更新API请求数据:', ruleData);
+        
+        // 查找要更新的规则索引
+        const ruleIndex = portRules.value.findIndex(item => item.id === ruleId);
+        if (ruleIndex === -1) {
+          throw new Error('未找到要更新的规则');
+        }
+        
+        // 更新规则对象
+        const updatedRule = {
+          ...portRules.value[ruleIndex],
+          protocol: ruleData.protocol.toUpperCase(),
+          strategy: ruleData.strategy,
+          address: ruleData.source === 'any' ? 'Anywhere' : ruleData.source,
+          description: ruleData.description,
+          zone: ruleData.zone,
+          family: ruleData.family,
+          permanent: ruleData.permanent
+        };
+        
+        // 更新列表中的规则
+        portRules.value[ruleIndex] = updatedRule;
+        
+        resolve({ success: true, data: updatedRule });
+      } catch (error) {
+        reject(error);
+      }
+    }, 800); // 模拟网络延迟
+  });
+};
+
+// 替换为统一的端口规则删除API函数
+const deletePortRulesApi = (ruleIds: number[]): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    // 模拟网络延迟
+    setTimeout(() => {
+      try {
+        // 模拟成功回调，实际项目中应调用真实API
+        console.log('删除端口规则IDs:', ruleIds);
+        
+        // 验证所有规则ID是否有效
+        for (const id of ruleIds) {
+          const ruleExists = portRules.value.some(item => item.id === id);
+          if (!ruleExists) {
+            throw new Error(`未找到ID为${id}的规则`);
+          }
+        }
+        
+        // 从列表中删除规则
+        portRules.value = portRules.value.filter(item => !ruleIds.includes(item.id));
+        
+        resolve({ success: true });
+      } catch (error) {
+        reject(error);
+      }
+    }, 800); // 模拟网络延迟
+  });
+};
+
+// 提交表单
+const submitPortRuleForm = async () => {
+  if (!portRuleFormRef.value) return;
+  
+  await portRuleFormRef.value.validate(async (valid, fields) => {
+    if (valid) {
+      // 设置加载状态
+      loading.value = true;
+      
+      try {
+        // 构建提交数据
+        const ruleData = {
+          ...portRuleForm,
+          source: portRuleForm.sourceType === 'any' ? 'any' : portRuleForm.sourceAddress
+        };
+        
+        // 根据表单模式调用不同的API
+        if (formMode.value === 'create') {
+          // 调用API添加规则
+          await addPortRule(ruleData);
+          
+          // 提示成功
+          ElMessage({
+            type: 'success',
+            message: '端口规则创建成功'
+          });
+        } else {
+          // 调用API更新规则
+          if (editingRuleId.value === null) {
+            throw new Error('未找到要更新的规则ID');
+          }
+          
+          await updatePortRule(editingRuleId.value, ruleData);
+          
+          // 提示成功
+          ElMessage({
+            type: 'success',
+            message: '端口规则更新成功'
+          });
+        }
+        
+        // 关闭抽屉
+        portRuleDrawerVisible.value = false;
+        
+        // 重置表单
+        resetPortRuleForm();
+        
+        // 重置加载状态
+        loading.value = false;
+      } catch (error) {
+        // 错误处理
+        console.error(formMode.value === 'create' ? '添加端口规则失败:' : '更新端口规则失败:', error);
+        ElMessage({
+          type: 'error',
+          message: formMode.value === 'create' ? '添加端口规则失败，请重试' : '更新端口规则失败，请重试'
+        });
+        
+        // 重置加载状态
+        loading.value = false;
+      }
+    } else {
+      console.error('表单验证失败:', fields);
+    }
+  });
+};
+
+// 取消表单
+const cancelPortRuleForm = () => {
+  portRuleDrawerVisible.value = false;
+  resetPortRuleForm();
+};
+
+const editPortRule = (row: PortRule) => {
+  // 设置表单模式为编辑
+  formMode.value = 'edit';
+  editingRuleId.value = row.id;
+  
+  // 将行数据填充到表单中
+  Object.assign(portRuleForm, {
+    protocol: row.protocol.toLowerCase(),
+    port: row.port,
+    sourceType: row.address === 'Anywhere' ? 'any' : 'specific',
+    sourceAddress: row.address === 'Anywhere' ? '' : row.address,
+    strategy: row.strategy,
+    zone: row.zone,
+    family: row.family,
+    permanent: row.permanent,
+    description: row.description
+  });
+  
+  // 显示抽屉
+  portRuleDrawerVisible.value = true;
+};
+
+const deletePortRule = (row: PortRule | null) => {
+  // 如果row为null，则表示批量删除
+  if (row === null && selectedPortRows.value.length === 0) {
+    return; // 没有选中行，直接返回
+  }
+  
+  const message = row 
+    ? `确定要删除端口 ${row.port} 的规则吗？` 
+    : `确定要删除选中的 ${selectedPortRows.value.length} 条规则吗？`;
+  
+  ElMessageBox.confirm(message, '删除确认', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    // 设置加载状态
+    loading.value = true;
+    
+    try {
+      // 准备要删除的ID数组
+      const ids = row ? [row.id] : selectedPortRows.value.map(item => item.id);
+      
+      // 调用统一的删除API
+      await deletePortRulesApi(ids);
+      
+      // 如果是批量删除，清空选择
+      if (!row) {
+        selectedPortRows.value = [];
+      }
+      
+      // 提示成功
+      ElMessage({
+        type: 'success',
+        message: row ? '删除端口规则成功' : '批量删除端口规则成功'
+      });
+      
+      // 重置加载状态
+      loading.value = false;
+    } catch (error) {
+      // 错误处理
+      console.error('删除端口规则失败:', error);
+      ElMessage({
+        type: 'error',
+        message: '删除端口规则失败，请重试'
+      });
+      
+      // 重置加载状态
+      loading.value = false;
+    }
+  }).catch(() => {
+    // 取消删除，不做任何操作
+  });
+};
+
+// 监听防火墙状态变化
+watch(() => firewallStatus.value, (newStatus) => {
+  if (newStatus === 'running') {
+    // 防火墙状态变为运行，确保界面更新
+    maskShow.value = false;
+  } else {
+    // 防火墙状态变为停止，显示提示
+    maskShow.value = true;
+  }
+});
 
 // 初始化
 onMounted(() => {
@@ -407,13 +1033,28 @@ onMounted(() => {
 
             <!-- 搜索过滤区 -->
             <div class="flx-align-center mb-4">
-              <el-select v-model="portSearchStatus" clearable class="p-w-200">
+              <el-select v-model="portSearchZone" @change="applyPortFilter" clearable class="p-w-150">
+                <template #prefix>区域</template>
+                <el-option label="全部" value=""></el-option>
+                <el-option label="公共" value="public"></el-option>
+                <el-option label="私有" value="private"></el-option>
+                <el-option label="内部" value="internal"></el-option>
+                <el-option label="DMZ" value="dmz"></el-option>
+              </el-select>
+              <el-select v-model="portSearchFamily" @change="applyPortFilter" clearable class="p-w-150 ml-2">
+                <template #prefix>IP类型</template>
+                <el-option label="全部" value=""></el-option>
+                <el-option label="IPv4" value="ipv4"></el-option>
+                <el-option label="IPv6" value="ipv6"></el-option>
+                <el-option label="IPv4/IPv6" value="both"></el-option>
+              </el-select>
+              <el-select v-model="portSearchStatus" @change="applyPortFilter" clearable class="p-w-150 ml-2">
                 <template #prefix>状态</template>
                 <el-option label="全部" value=""></el-option>
                 <el-option label="未使用" value="free"></el-option>
                 <el-option label="已使用" value="used"></el-option>
               </el-select>
-              <el-select v-model="portSearchStrategy" clearable class="p-w-200 ml-2">
+              <el-select v-model="portSearchStrategy" @change="applyPortFilter" clearable class="p-w-150 ml-2">
                 <template #prefix>策略</template>
                 <el-option label="全部" value=""></el-option>
                 <el-option label="允许" value="accept"></el-option>
@@ -421,6 +1062,7 @@ onMounted(() => {
               </el-select>
               <el-input
                 v-model="portSearchQuery"
+                @input="applyPortFilter"
                 placeholder="搜索端口、协议、描述..."
                 class="p-w-200 ml-2"
                 clearable
@@ -434,12 +1076,15 @@ onMounted(() => {
             <!-- 工具栏 -->
             <div class="flex justify-between gap-2 flex-wrap sm:flex-row mb-4">
               <div class="flex flex-wrap gap-3">
-                <el-button type="primary" icon="Plus">
+                <el-button type="primary" :icon="Plus" @click="createPortRule">
                   创建端口规则
                 </el-button>
-                <el-button :disabled="selectedPortRows.length === 0" icon="Delete" plain>
+                <el-button :disabled="selectedPortRows.length === 0" :icon="Delete" plain @click="deletePortRule(null)">
                   删除
                 </el-button>
+              </div>
+              <div class="flex flex-wrap gap-3">
+                <TableSetting v-model:refreshRate="refreshRate" />
               </div>
             </div>
 
@@ -451,22 +1096,39 @@ onMounted(() => {
               style="width: 100%"
             >
               <el-table-column type="selection" width="55" />
+              <el-table-column label="区域" prop="zone" width="100">
+                <template #default="{ row }">
+                  <el-tag effect="plain">{{ row.zone }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="IP类型" prop="family" width="100">
+                <template #default="{ row }">
+                  <el-tag type="info" v-if="row.family === 'ipv4'">IPv4</el-tag>
+                  <el-tag type="success" v-else-if="row.family === 'ipv6'">IPv6</el-tag>
+                  <el-tag type="warning" v-else-if="row.family === 'both'">IPv4/IPv6</el-tag>
+                </template>
+              </el-table-column>
               <el-table-column label="协议" prop="protocol" width="100" />
               <el-table-column label="端口" prop="port" width="120" />
               <el-table-column label="状态" width="150">
                 <template #default="{ row }">
-                  <div v-if="row.port.includes('-') && row.usedStatus">
+                  <div v-if="row.port.includes('-') && row.usedStatus" class="status-with-info">
                     <el-tag type="info" class="mt-1">
                       已使用 * {{ row.usedPorts?.length || 0 }}
                     </el-tag>
-                    <el-popover placement="right" :width="250" v-if="row.usedPorts?.length">
+                    <el-popover placement="right" :width="250" v-if="row.usedPorts?.length" trigger="hover">
                       <template #default>
-                        <ul>
-                          <li v-for="(item, index) in row.usedPorts" :key="index">{{ item }}</li>
-                        </ul>
+                        <div class="used-ports-list">
+                          <div class="used-ports-list-title">已使用端口:</div>
+                          <div class="used-ports-list-content">
+                            <el-tag v-for="(item, index) in row.usedPorts" :key="index" size="small" class="used-port-tag">
+                              {{ item }}
+                            </el-tag>
+                          </div>
+                        </div>
                       </template>
                       <template #reference>
-                        <el-icon class="svg-icon"><Operation /></el-icon>
+                        <el-icon class="info-icon"><InfoFilled /></el-icon>
                       </template>
                     </el-popover>
                   </div>
@@ -495,8 +1157,14 @@ onMounted(() => {
               <el-table-column label="描述" prop="description" min-width="180" show-overflow-tooltip />
               <el-table-column label="操作" width="150" fixed="right">
                 <template #default="{ row }">
-                  <el-button link type="primary" icon="Edit" size="small">编辑</el-button>
-                  <el-button link type="danger" icon="Delete" size="small">删除</el-button>
+                  <el-button link type="primary" :icon="Edit" size="small" @click="editPortRule(row)">编辑</el-button>
+                  <el-button link type="danger" :icon="Delete" size="small" @click="deletePortRule(row)">删除</el-button>
+                </template>
+              </el-table-column>
+              <el-table-column label="持久化" width="80" align="center">
+                <template #default="{ row }">
+                  <el-tag type="success" v-if="row.permanent">是</el-tag>
+                  <el-tag type="info" v-else>否</el-tag>
                 </template>
               </el-table-column>
             </el-table>
@@ -552,6 +1220,9 @@ onMounted(() => {
                 <el-button :disabled="selectedForwardRows.length === 0" icon="Delete" plain>
                   删除
                 </el-button>
+              </div>
+              <div class="flex flex-wrap gap-3">
+                <TableSetting v-model:refreshRate="refreshRate" />
               </div>
             </div>
 
@@ -634,6 +1305,9 @@ onMounted(() => {
                   删除
                 </el-button>
               </div>
+              <div class="flex flex-wrap gap-3">
+                <TableSetting v-model:refreshRate="refreshRate" />
+              </div>
             </div>
 
             <!-- 表格 -->
@@ -684,6 +1358,99 @@ onMounted(() => {
         <span>防火墙未启动</span>
       </el-card>
     </div>
+
+    <!-- 端口规则创建弹框 -->
+    <el-drawer
+      v-model="portRuleDrawerVisible"
+      :title="formMode === 'create' ? '创建规则' : '编辑规则'"
+      size="500px"
+      :before-close="cancelPortRuleForm"
+      :show-close="false"
+      destroy-on-close
+    >
+      <template #header>
+        <div class="drawer-header">
+          <el-icon @click="cancelPortRuleForm" class="drawer-back-icon"><ArrowLeft /></el-icon>
+          <span class="drawer-title">{{ formMode === 'create' ? '创建规则' : '编辑规则' }}</span>
+        </div>
+      </template>
+      <el-form 
+        ref="portRuleFormRef" 
+        :model="portRuleForm" 
+        :rules="portRuleFormRules"
+        label-width="80px"
+        class="port-rule-form"
+      >
+        <el-form-item label="协议" prop="protocol">
+          <el-select v-model="portRuleForm.protocol" class="w-full">
+            <el-option label="TCP" value="tcp"></el-option>
+            <el-option label="UDP" value="udp"></el-option>
+            <el-option label="TCP/UDP" value="TCP/UDP"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="端口" prop="port">
+          <el-input v-model="portRuleForm.port" placeholder="请输入端口" :disabled="formMode === 'edit'"></el-input>
+          <div class="form-tips" v-if="formMode === 'create'">
+            <div>多个端口，如：8080,8081</div>
+            <div>范围端口，如：8080-8089</div>
+          </div>
+        </el-form-item>
+        <el-form-item label="来源" prop="sourceType">
+          <el-radio-group v-model="portRuleForm.sourceType">
+            <el-radio label="any">所有 IP</el-radio>
+            <el-radio label="specific">指定 IP</el-radio>
+          </el-radio-group>
+          <el-input 
+            v-if="portRuleForm.sourceType === 'specific'" 
+            v-model="portRuleForm.sourceAddress" 
+            placeholder="请输入IP地址"
+            class="mt-2 w-full"
+          ></el-input>
+          <div v-if="portRuleForm.sourceType === 'specific'" class="form-tips">
+            <div>支持输入 IP 或 IP 范围，如：172.16.10.11 或 172.16.0.0/24</div>
+            <div>多个 IP 或 IP 段请用","隔开：172.16.10.11,172.16.0.0/24</div>
+          </div>
+        </el-form-item>
+        <el-form-item label="策略" prop="strategy">
+          <el-radio-group v-model="portRuleForm.strategy">
+            <el-radio label="accept">允许</el-radio>
+            <el-radio label="drop">拒绝</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="区域" prop="zone">
+          <el-select v-model="portRuleForm.zone" class="w-full">
+            <el-option label="公共区域" value="public"></el-option>
+            <el-option label="私有区域" value="private"></el-option>
+            <el-option label="内部区域" value="internal"></el-option>
+            <el-option label="DMZ区域" value="dmz"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="IP类型" prop="family">
+          <el-select v-model="portRuleForm.family" class="w-full">
+            <el-option label="IPv4" value="ipv4"></el-option>
+            <el-option label="IPv6" value="ipv6"></el-option>
+            <el-option label="IPv4/IPv6" value="both"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="持久化" prop="permanent">
+          <el-switch v-model="portRuleForm.permanent"></el-switch>
+        </el-form-item>
+        <el-form-item label="描述" prop="description">
+          <el-input 
+            v-model="portRuleForm.description" 
+            type="textarea" 
+            placeholder="请输入描述信息"
+            :rows="3"
+          ></el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="drawer-footer">
+          <el-button @click="cancelPortRuleForm">取消</el-button>
+          <el-button type="primary" @click="submitPortRuleForm">确认</el-button>
+        </div>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -703,6 +1470,9 @@ onMounted(() => {
 .p-w-200 {
   width: 200px;
 }
+.p-w-150 {
+  width: 150px;
+}
 .mask {
   opacity: 0.6;
   pointer-events: none;
@@ -714,6 +1484,20 @@ onMounted(() => {
 .svg-icon {
   margin-left: 0.25rem;
   cursor: pointer;
+}
+.info-icon {
+  margin-left: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  color: #409eff;
+  transition: color 0.2s;
+}
+.info-icon:hover {
+  color: #66b1ff;
+}
+.status-with-info {
+  display: flex;
+  align-items: center;
 }
 .flex {
   display: flex;
@@ -744,6 +1528,23 @@ onMounted(() => {
   padding: 1rem;
   background-color: #fef0f0;
   color: #f56c6c;
+}
+.used-ports-list {
+  padding: 5px;
+}
+.used-ports-list-title {
+  font-weight: bold;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+}
+.used-ports-list-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.used-port-tag {
+  margin: 3px;
 }
 @media (min-width: 768px) {
   .md\:flex-row {

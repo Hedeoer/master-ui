@@ -94,6 +94,8 @@ declare module 'vue' {
     PreLoadPage: typeof import('./components/PreLoadPage.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    TableSearch: typeof import('./components/TableSearch.vue')['default']
+    TableSetting: typeof import('./components/TableSetting.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']
