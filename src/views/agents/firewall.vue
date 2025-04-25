@@ -31,6 +31,8 @@ import { Search, Position, Delete, Edit, Plus, Warning, Operation, Setting, Info
 import TableSetting from '../../components/TableSetting.vue';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useRoute } from 'vue-router';
+import { fetchPortRulesByNodeId as apiFetchPortRulesByNodeId, type PortRule as ApiPortRule } from '~/api/agents/firewall';
+import { fetchNodeListApi } from '~/api/agents/firewall';
 
 // 定义组件名称，与路由name保持一致
 defineOptions({
@@ -111,33 +113,26 @@ const refreshData = () => {
   
   // 根据当前活动标签页刷新对应数据
   if (currentTab === 'port') {
-    // 模拟API调用延迟
-    setTimeout(() => {
-      try {
-        // 重新获取端口规则数据（实际项目中应该调用实际的API）
-        // 这里只是简单模拟更新数据
-        const newData = [...portRules.value];
-        // 模拟数据变化
-        if (newData.length > 0) {
-          newData[0] = { ...newData[0], description: `SSH服务 (刷新于 ${new Date().toLocaleTimeString()})` };
-        }
-        portRules.value = newData;
-        
-        // 恢复筛选和分页状态
-        portPagination.currentPage = currentPortPage;
-        portPagination.pageSize = currentPortSize;
-        portSearchStatus.value = currentPortStatus;
-        portSearchStrategy.value = currentPortStrategy;
-        portSearchQuery.value = currentPortQuery;
-        portSearchZone.value = currentPortZone;
-        portSearchFamily.value = currentPortFamily;
-        
-        loading.value = false;
-      } catch (error) {
-        console.error('刷新端口规则数据失败:', error);
-        loading.value = false;
-      }
-    }, 500);
+    // 检查当前是否有选中节点
+    if (currentNodeId.value) {
+      // 使用API获取端口规则数据
+      fetchPortRulesByNodeId(currentNodeId.value)
+        .then(() => {
+          // 恢复筛选和分页状态
+          portPagination.currentPage = currentPortPage;
+          portPagination.pageSize = currentPortSize;
+          portSearchStatus.value = currentPortStatus;
+          portSearchStrategy.value = currentPortStrategy;
+          portSearchQuery.value = currentPortQuery;
+          portSearchZone.value = currentPortZone;
+          portSearchFamily.value = currentPortFamily;
+        })
+        .finally(() => {
+          loading.value = false;
+        });
+    } else {
+      loading.value = false;
+    }
   } else if (currentTab === 'ip') {
     // 模拟API调用延迟
     setTimeout(() => {
@@ -187,19 +182,7 @@ const refreshData = () => {
 };
 
 // --- 定义类型接口 ---
-interface PortRule {
-  id: number;
-  protocol: string;
-  port: string;
-  strategy: 'accept' | 'drop';
-  address: string;
-  description: string;
-  usedStatus: string | null;
-  usedPorts?: string[];
-  zone: string;
-  family: 'ipv4' | 'ipv6' | 'both';
-  permanent: boolean;
-}
+interface PortRule extends ApiPortRule {}
 
 interface IPRule {
   id: number;
@@ -1052,19 +1035,36 @@ const filteredNodeList = computed(() => {
 });
 
 // 加载节点列表（模拟）
-const fetchNodeList = (): Promise<any> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      // 模拟节点数据
-      nodeList.value = [
-        { id: 'node1', name: 'server-01', ip: '192.168.1.100' },
-        { id: 'node2', name: 'server-02', ip: '192.168.1.101' },
-        { id: 'node3', name: 'server-03', ip: '192.168.1.102' },
-        { id: 'node4', name: 'server-04', ip: '192.168.1.103' },
-      ];
-      resolve({ success: true, data: nodeList.value });
-    }, 300);
-  });
+const fetchNodeList = async (): Promise<any> => {
+  try {
+    // 设置加载状态
+    loading.value = true;
+    
+    // 调用真实API获取节点列表
+    const { success, data, message } = await fetchNodeListApi();
+    
+    if (success && data) {
+      // 将API返回的节点数据适配为本地格式
+        nodeList.value = data.map(node => ({
+        id: node.nodeId || '',
+        name: node.nodeName || '',
+        ip: node.nodeIp || ''
+      }));
+      return { success: true, data: nodeList.value };
+    } else {
+      // 处理API请求失败情况
+      ElMessage.error(message || '获取节点列表失败');
+      return { success: false, message };
+    }
+  } catch (error) {
+    // 处理异常情况
+    console.error('获取节点列表失败:', error);
+    ElMessage.error('获取节点列表失败');
+    return { success: false, message: (error as Error).message };
+  } finally {
+    // 重置加载状态
+    loading.value = false;
+  }
 };
 
 // 设置当前节点
@@ -1087,122 +1087,33 @@ const fetchPortRulesByNodeId = (nodeId: string): Promise<any> => {
     // 设置加载状态
     loading.value = true;
     
-    setTimeout(() => {
-      // 模拟不同节点有不同数据
-      let rules: PortRule[] = [];
-      
-      if (nodeId === 'node1') {
-        rules = [
-          { 
-            id: 1, 
-            protocol: 'TCP', 
-            port: '22', 
-            strategy: 'accept' as 'accept' | 'drop', 
-            address: 'Anywhere', 
-            description: 'SSH服务', 
-            usedStatus: 'inUsed',
-            zone: 'public',
-            family: 'ipv4',
-            permanent: true
-          },
-          { 
-            id: 2, 
-            protocol: 'TCP', 
-            port: '80', 
-            strategy: 'accept' as 'accept' | 'drop', 
-            address: 'Anywhere', 
-            description: 'HTTP服务', 
-            usedStatus: 'inUsed',
-            zone: 'public',
-            family: 'both',
-            permanent: true
-          },
-          // 其他已有样例数据...
-        ];
-      } else if (nodeId === 'node2') {
-        rules = [
-          { 
-            id: 1, 
-            protocol: 'TCP', 
-            port: '3306', 
-            strategy: 'accept' as 'accept' | 'drop', 
-            address: '192.168.1.0/24', 
-            description: 'MySQL数据库', 
-            usedStatus: 'inUsed',
-            zone: 'internal',
-            family: 'ipv4',
-            permanent: true
-          },
-          { 
-            id: 2, 
-            protocol: 'TCP', 
-            port: '5432', 
-            strategy: 'accept' as 'accept' | 'drop', 
-            address: '192.168.1.0/24', 
-            description: 'PostgreSQL数据库', 
-            usedStatus: 'inUsed',
-            zone: 'internal',
-            family: 'ipv4',
-            permanent: true
-          },
-        ];
-      } else if (nodeId === 'node3') {
-        rules = [
-          { 
-            id: 1, 
-            protocol: 'TCP', 
-            port: '6379', 
-            strategy: 'accept' as 'accept' | 'drop', 
-            address: '192.168.1.0/24', 
-            description: 'Redis服务', 
-            usedStatus: 'inUsed',
-            zone: 'internal',
-            family: 'ipv4',
-            permanent: true
-          },
-          { 
-            id: 2, 
-            protocol: 'TCP', 
-            port: '27017', 
-            strategy: 'accept' as 'accept' | 'drop', 
-            address: '192.168.1.0/24', 
-            description: 'MongoDB服务', 
-            usedStatus: 'inUsed',
-            zone: 'internal',
-            family: 'ipv4',
-            permanent: true
-          },
-        ];
-      } else {
-        // 默认数据
-        rules = [
-          { 
-            id: 1, 
-            protocol: 'TCP', 
-            port: '22', 
-            strategy: 'accept' as 'accept' | 'drop', 
-            address: 'Anywhere', 
-            description: '默认SSH服务', 
-            usedStatus: 'inUsed',
-            zone: 'public',
-            family: 'ipv4',
-            permanent: true
-          },
-        ];
-      }
-      
-      // 更新数据
-      portRules.value = rules;
-      
-      // 恢复分页状态
-      portPagination.currentPage = currentPage;
-      portPagination.pageSize = currentSize;
-      
-      // 重置加载状态
-      loading.value = false;
-      
-      resolve({ success: true, data: rules });
-    }, 600);
+    // 调用真实API
+    apiFetchPortRulesByNodeId(nodeId)
+      .then(({ success, data, message }) => {
+        if (success && data) {
+          // 更新数据
+          portRules.value = data;
+          
+          // 恢复分页状态
+          portPagination.currentPage = currentPage;
+          portPagination.pageSize = currentSize;
+          
+          resolve({ success: true, data });
+        } else {
+          // 显示错误信息
+          ElMessage.error(message || '获取端口规则失败');
+          resolve({ success: false, message });
+        }
+      })
+      .catch((error) => {
+        console.error('获取端口规则失败:', error);
+        ElMessage.error('获取端口规则失败');
+        resolve({ success: false, message: error.message });
+      })
+      .finally(() => {
+        // 重置加载状态
+        loading.value = false;
+      });
   });
 };
 
