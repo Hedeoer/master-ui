@@ -31,8 +31,15 @@ import { Search, Position, Delete, Edit, Plus, Warning, Operation, Setting, Info
 import TableSetting from '../../components/TableSetting.vue';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useRoute } from 'vue-router';
-import { fetchPortRulesByNodeId as apiFetchPortRulesByNodeId, type PortRule as ApiPortRule } from '~/api/agents/firewall';
-import { fetchNodeListApi } from '~/api/agents/firewall';
+import { 
+  fetchPortRulesByNodeId as apiFetchPortRulesByNodeId, 
+  fetchNodeListApi,
+  addPortRuleApi,
+  updatePortRuleApi,
+  deletePortRulesApi,
+  type PortRule as ApiPortRule,
+  type PortRuleSubmitParams
+} from '~/api/agents/firewall';
 
 // 定义组件名称，与路由name保持一致
 defineOptions({
@@ -205,10 +212,12 @@ interface ForwardRule {
 const portRules = ref<PortRule[]>([
   { 
     id: 1, 
+    nodeId: '', 
     protocol: 'TCP', 
     port: '22', 
     strategy: 'accept', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: 'SSH服务', 
     usedStatus: 'inUsed',
     zone: 'public',
@@ -217,10 +226,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 2, 
+    nodeId: '', 
     protocol: 'TCP', 
     port: '80', 
     strategy: 'accept', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: 'HTTP服务', 
     usedStatus: 'inUsed',
     zone: 'public',
@@ -229,10 +240,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 3, 
+    nodeId: '', 
     protocol: 'TCP', 
     port: '443', 
     strategy: 'accept', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: 'HTTPS服务', 
     usedStatus: 'inUsed',
     zone: 'public',
@@ -241,10 +254,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 4, 
+    nodeId: '', 
     protocol: 'TCP/UDP', 
     port: '3000-4000', 
     strategy: 'accept', 
-    address: '192.168.1.1', 
+    sourceType: 'specific',
+    sourceAddress: '192.168.1.1',
     description: '开发服务端口范围', 
     usedStatus: null,
     zone: 'private',
@@ -253,10 +268,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 5, 
+    nodeId: '', 
     protocol: 'UDP', 
     port: '53', 
     strategy: 'accept', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: 'DNS服务', 
     usedStatus: 'inUsed',
     zone: 'public',
@@ -265,10 +282,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 6, 
+    nodeId: '', 
     protocol: 'TCP', 
     port: '8080-8090', 
     strategy: 'drop', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: '禁止访问的测试端口范围', 
     usedStatus: 'inUsed',
     usedPorts: ['8080', '8082', '8085'],
@@ -278,10 +297,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 7, 
+    nodeId: '', 
     protocol: 'TCP', 
     port: '25', 
     strategy: 'drop', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: '阻止SMTP', 
     usedStatus: null,
     zone: 'dmz',
@@ -290,10 +311,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 8, 
+    nodeId: '', 
     protocol: 'TCP', 
     port: '21', 
     strategy: 'drop', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: '阻止FTP', 
     usedStatus: null,
     zone: 'dmz',
@@ -302,10 +325,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 9, 
+    nodeId: '', 
     protocol: 'TCP', 
     port: '3389', 
     strategy: 'drop', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: '阻止远程桌面连接', 
     usedStatus: null,
     zone: 'private',
@@ -314,10 +339,12 @@ const portRules = ref<PortRule[]>([
   },
   { 
     id: 10, 
+    nodeId: '', 
     protocol: 'TCP', 
     port: '5900-5910', 
     strategy: 'drop', 
-    address: 'Anywhere', 
+    sourceType: 'any',
+    sourceAddress: '',
     description: '阻止VNC服务', 
     usedStatus: null,
     zone: 'internal',
@@ -430,7 +457,7 @@ const filteredPortRules = computed(() => {
       rule.protocol.toLowerCase().includes(query) ||
       rule.description.toLowerCase().includes(query) ||
       rule.zone.toLowerCase().includes(query) ||
-      (rule.address && rule.address.toLowerCase().includes(query))
+      (rule.sourceType === 'specific' && rule.sourceAddress.toLowerCase().includes(query))
     );
   }
   
@@ -689,41 +716,38 @@ const resetPortRuleForm = () => {
   });
 };
 
-// 添加模拟API调用函数（实际项目中应替换为真实API调用）
-const addPortRule = (ruleData: any): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    // 模拟网络延迟
-    setTimeout(() => {
-      try {
-        // 模拟成功回调，实际项目中应调用真实API
-        console.log('API请求数据:', ruleData);
-        
-        // 模拟生成一个新ID
-        const newId = Math.max(...portRules.value.map(item => item.id), 0) + 1;
-        
-        // 创建新规则对象
-        const newRule = {
-          id: newId,
-          protocol: ruleData.protocol.toUpperCase(),
-          port: ruleData.port,
-          strategy: ruleData.strategy,
-          address: ruleData.source === 'any' ? 'Anywhere' : ruleData.source,
-          description: ruleData.description,
-          usedStatus: null,
-          zone: ruleData.zone,
-          family: ruleData.family,
-          permanent: ruleData.permanent
-        };
-        
-        // 添加到列表中
-        portRules.value.unshift(newRule);
-        
-        resolve({ success: true, data: newRule });
-      } catch (error) {
-        reject(error);
-      }
-    }, 800); // 模拟网络延迟
-  });
+// 添加端口规则 - 使用真实API
+const addPortRule = async (ruleData: any): Promise<any> => {
+  try {
+    // 准备API需要的参数格式
+    const params: PortRuleSubmitParams = {
+      nodeId: currentNodeId.value,
+      protocol: ruleData.protocol,
+      port: ruleData.port,
+      sourceType: ruleData.sourceType,
+      sourceAddress: ruleData.sourceType === 'specific' ? ruleData.sourceAddress : undefined,
+      strategy: ruleData.strategy,
+      zone: ruleData.zone,
+      family: ruleData.family,
+      permanent: ruleData.permanent,
+      description: ruleData.description || ''
+    };
+    
+    // 调用真实API
+    const { success, data, message } = await addPortRuleApi(params);
+    
+    if (success && data) {
+      // 添加成功，刷新当前节点的端口规则列表
+      await fetchPortRulesByNodeId(currentNodeId.value);
+      
+      return { success: true, data };
+    } else {
+      throw new Error(message || '添加端口规则失败');
+    }
+  } catch (error) {
+    console.error('添加端口规则失败:', error);
+    throw error;
+  }
 };
 
 // 添加模拟更新API调用函数
@@ -745,8 +769,9 @@ const updatePortRule = (ruleId: number, ruleData: any): Promise<any> => {
         const updatedRule = {
           ...portRules.value[ruleIndex],
           protocol: ruleData.protocol.toUpperCase(),
+          sourceType: ruleData.sourceType,
+          sourceAddress: ruleData.sourceType === 'specific' ? ruleData.sourceAddress : '',
           strategy: ruleData.strategy,
-          address: ruleData.source === 'any' ? 'Anywhere' : ruleData.source,
           description: ruleData.description,
           zone: ruleData.zone,
           family: ruleData.family,
@@ -764,31 +789,65 @@ const updatePortRule = (ruleId: number, ruleData: any): Promise<any> => {
   });
 };
 
-// 替换为统一的端口规则删除API函数
-const deletePortRulesApi = (ruleIds: number[]): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    // 模拟网络延迟
-    setTimeout(() => {
-      try {
-        // 模拟成功回调，实际项目中应调用真实API
-        console.log('删除端口规则IDs:', ruleIds);
-        
-        // 验证所有规则ID是否有效
-        for (const id of ruleIds) {
-          const ruleExists = portRules.value.some(item => item.id === id);
-          if (!ruleExists) {
-            throw new Error(`未找到ID为${id}的规则`);
-          }
-        }
-        
-        // 从列表中删除规则
-        portRules.value = portRules.value.filter(item => !ruleIds.includes(item.id));
-        
-        resolve({ success: true });
-      } catch (error) {
-        reject(error);
+const deletePortRule = (row: PortRule | null) => {
+  // 如果row为null，则表示批量删除
+  if (row === null && selectedPortRows.value.length === 0) {
+    return; // 没有选中行，直接返回
+  }
+  
+  const message = row 
+    ? `确定要删除端口 ${row.port} 的规则吗？` 
+    : `确定要删除选中的 ${selectedPortRows.value.length} 条规则吗？`;
+  
+  ElMessageBox.confirm(message, '删除确认', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    // 设置加载状态
+    loading.value = true;
+    
+    try {
+      // 准备要删除的ID数组
+      const ids = row ? [row.id] : selectedPortRows.value.map(item => item.id);
+      
+      // 如果没有当前节点ID，则无法删除
+      if (!currentNodeId.value) {
+        throw new Error('未选择节点，无法删除规则');
       }
-    }, 800); // 模拟网络延迟
+      
+      // 调用真实的删除API
+      await deletePortRulesApi(currentNodeId.value, ids);
+      
+      // 删除成功后刷新列表
+      await fetchPortRulesByNodeId(currentNodeId.value);
+      
+      // 如果是批量删除，清空选择
+      if (!row) {
+        selectedPortRows.value = [];
+      }
+      
+      // 提示成功
+      ElMessage({
+        type: 'success',
+        message: row ? '删除端口规则成功' : '批量删除端口规则成功'
+      });
+      
+      // 重置加载状态
+      loading.value = false;
+    } catch (error) {
+      // 错误处理
+      console.error('删除端口规则失败:', error);
+      ElMessage({
+        type: 'error',
+        message: '删除端口规则失败，请重试'
+      });
+      
+      // 重置加载状态
+      loading.value = false;
+    }
+  }).catch(() => {
+    // 取消删除，不做任何操作
   });
 };
 
@@ -804,8 +863,7 @@ const submitPortRuleForm = async () => {
       try {
         // 构建提交数据
         const ruleData = {
-          ...portRuleForm,
-          source: portRuleForm.sourceType === 'any' ? 'any' : portRuleForm.sourceAddress
+          ...portRuleForm
         };
         
         // 根据表单模式调用不同的API
@@ -873,8 +931,8 @@ const editPortRule = (row: PortRule) => {
   Object.assign(portRuleForm, {
     protocol: row.protocol.toLowerCase(),
     port: row.port,
-    sourceType: row.address === 'Anywhere' ? 'any' : 'specific',
-    sourceAddress: row.address === 'Anywhere' ? '' : row.address,
+    sourceType: row.sourceType,
+    sourceAddress: row.sourceType === 'specific' ? row.sourceAddress : '',
     strategy: row.strategy,
     zone: row.zone,
     family: row.family,
@@ -884,60 +942,6 @@ const editPortRule = (row: PortRule) => {
   
   // 显示抽屉
   portRuleDrawerVisible.value = true;
-};
-
-const deletePortRule = (row: PortRule | null) => {
-  // 如果row为null，则表示批量删除
-  if (row === null && selectedPortRows.value.length === 0) {
-    return; // 没有选中行，直接返回
-  }
-  
-  const message = row 
-    ? `确定要删除端口 ${row.port} 的规则吗？` 
-    : `确定要删除选中的 ${selectedPortRows.value.length} 条规则吗？`;
-  
-  ElMessageBox.confirm(message, '删除确认', {
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    type: 'warning'
-  }).then(async () => {
-    // 设置加载状态
-    loading.value = true;
-    
-    try {
-      // 准备要删除的ID数组
-      const ids = row ? [row.id] : selectedPortRows.value.map(item => item.id);
-      
-      // 调用统一的删除API
-      await deletePortRulesApi(ids);
-      
-      // 如果是批量删除，清空选择
-      if (!row) {
-        selectedPortRows.value = [];
-      }
-      
-      // 提示成功
-      ElMessage({
-        type: 'success',
-        message: row ? '删除端口规则成功' : '批量删除端口规则成功'
-      });
-      
-      // 重置加载状态
-      loading.value = false;
-    } catch (error) {
-      // 错误处理
-      console.error('删除端口规则失败:', error);
-      ElMessage({
-        type: 'error',
-        message: '删除端口规则失败，请重试'
-      });
-      
-      // 重置加载状态
-      loading.value = false;
-    }
-  }).catch(() => {
-    // 取消删除，不做任何操作
-  });
 };
 
 // 监听防火墙状态变化
@@ -1529,8 +1533,8 @@ onMounted(async () => {
               </el-table-column>
               <el-table-column label="地址" width="150">
                 <template #default="{ row }">
-                  <span v-if="row.address && row.address !== 'Anywhere'">{{ row.address }}</span>
-                  <span v-else>任意地址</span>
+                  <span v-if="row.sourceType === 'specific'">{{ row.sourceAddress }}</span>
+                  <span v-else>any</span>
                 </template>
               </el-table-column>
               <el-table-column label="描述" prop="description" min-width="180" show-overflow-tooltip />
