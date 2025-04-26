@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch, onUnmounted } from 'vue';
+import { ref, reactive, onMounted, computed, watch, onUnmounted, nextTick } from 'vue';
 import {
   ElCard,
   ElTabs,
@@ -217,7 +217,7 @@ const portRules = ref<PortRule[]>([
     port: '22', 
     strategy: 'accept', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: 'SSH服务', 
     usedStatus: 'inUsed',
     zone: 'public',
@@ -231,7 +231,7 @@ const portRules = ref<PortRule[]>([
     port: '80', 
     strategy: 'accept', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: 'HTTP服务', 
     usedStatus: 'inUsed',
     zone: 'public',
@@ -245,7 +245,7 @@ const portRules = ref<PortRule[]>([
     port: '443', 
     strategy: 'accept', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: 'HTTPS服务', 
     usedStatus: 'inUsed',
     zone: 'public',
@@ -273,7 +273,7 @@ const portRules = ref<PortRule[]>([
     port: '53', 
     strategy: 'accept', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: 'DNS服务', 
     usedStatus: 'inUsed',
     zone: 'public',
@@ -287,7 +287,7 @@ const portRules = ref<PortRule[]>([
     port: '8080-8090', 
     strategy: 'drop', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: '禁止访问的测试端口范围', 
     usedStatus: 'inUsed',
     usedPorts: ['8080', '8082', '8085'],
@@ -302,7 +302,7 @@ const portRules = ref<PortRule[]>([
     port: '25', 
     strategy: 'drop', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: '阻止SMTP', 
     usedStatus: null,
     zone: 'dmz',
@@ -316,7 +316,7 @@ const portRules = ref<PortRule[]>([
     port: '21', 
     strategy: 'drop', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: '阻止FTP', 
     usedStatus: null,
     zone: 'dmz',
@@ -330,7 +330,7 @@ const portRules = ref<PortRule[]>([
     port: '3389', 
     strategy: 'drop', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: '阻止远程桌面连接', 
     usedStatus: null,
     zone: 'private',
@@ -344,7 +344,7 @@ const portRules = ref<PortRule[]>([
     port: '5900-5910', 
     strategy: 'drop', 
     sourceType: 'any',
-    sourceAddress: '',
+    sourceAddress: '0.0.0.0',
     description: '阻止VNC服务', 
     usedStatus: null,
     zone: 'internal',
@@ -562,16 +562,28 @@ const portRuleDrawerVisible = ref(false);
 const portRuleFormRef = ref<FormInstance>();
 const formMode = ref<'create' | 'edit'>('create');
 const editingRuleId = ref<number | null>(null);
+const forceRender = ref(0); // 用于强制渲染表单组件的计数器
 const portRuleForm = reactive({
   protocol: 'tcp',
   port: '',
   sourceType: 'any',
-  sourceAddress: '',
+  sourceAddress: '0.0.0.0',
   strategy: 'accept',
   zone: 'public',
   family: 'ipv4',
   permanent: true,
   description: ''
+});
+
+// 监听 sourceType 变化
+watch(() => portRuleForm.sourceType, (newType) => {
+  // 当类型变为 any 时，将 sourceAddress 设置为 0.0.0.0
+  if (newType === 'any') {
+    portRuleForm.sourceAddress = '0.0.0.0';
+  } else if (newType === 'specific' && portRuleForm.sourceAddress === '0.0.0.0') {
+    // 当类型变为 specific 且当前地址是 0.0.0.0 时，清空地址，便于用户输入
+    portRuleForm.sourceAddress = '';
+  }
 });
 
 // 表单验证规则
@@ -703,17 +715,16 @@ const resetPortRuleForm = () => {
   if (portRuleFormRef.value) {
     portRuleFormRef.value.resetFields();
   }
-  Object.assign(portRuleForm, {
-    protocol: 'tcp',
-    port: '',
-    sourceType: 'any',
-    sourceAddress: '',
-    strategy: 'accept',
-    zone: 'public',
-    family: 'ipv4',
-    permanent: true,
-    description: ''
-  });
+  // 明确设置每个字段，避免使用Object.assign
+  portRuleForm.protocol = 'tcp';
+  portRuleForm.port = '';
+  portRuleForm.sourceType = 'any';
+  portRuleForm.sourceAddress = '0.0.0.0';
+  portRuleForm.strategy = 'accept'; // 确保是字符串类型
+  portRuleForm.zone = 'public';
+  portRuleForm.family = 'ipv4';
+  portRuleForm.permanent = true;
+  portRuleForm.description = '';
 };
 
 // 添加端口规则 - 使用真实API
@@ -725,7 +736,7 @@ const addPortRule = async (ruleData: any): Promise<any> => {
       protocol: ruleData.protocol,
       port: ruleData.port,
       sourceType: ruleData.sourceType,
-      sourceAddress: ruleData.sourceType === 'specific' ? ruleData.sourceAddress : undefined,
+      sourceAddress: ruleData.sourceAddress, // 直接使用表单中的 sourceAddress
       strategy: ruleData.strategy,
       zone: ruleData.zone,
       family: ruleData.family,
@@ -750,43 +761,38 @@ const addPortRule = async (ruleData: any): Promise<any> => {
   }
 };
 
-// 添加模拟更新API调用函数
-const updatePortRule = (ruleId: number, ruleData: any): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    // 模拟网络延迟
-    setTimeout(() => {
-      try {
-        // 模拟成功回调，实际项目中应调用真实API
-        console.log('更新API请求数据:', ruleData);
-        
-        // 查找要更新的规则索引
-        const ruleIndex = portRules.value.findIndex(item => item.id === ruleId);
-        if (ruleIndex === -1) {
-          throw new Error('未找到要更新的规则');
-        }
-        
-        // 更新规则对象
-        const updatedRule = {
-          ...portRules.value[ruleIndex],
-          protocol: ruleData.protocol.toUpperCase(),
-          sourceType: ruleData.sourceType,
-          sourceAddress: ruleData.sourceType === 'specific' ? ruleData.sourceAddress : '',
-          strategy: ruleData.strategy,
-          description: ruleData.description,
-          zone: ruleData.zone,
-          family: ruleData.family,
-          permanent: ruleData.permanent
-        };
-        
-        // 更新列表中的规则
-        portRules.value[ruleIndex] = updatedRule;
-        
-        resolve({ success: true, data: updatedRule });
-      } catch (error) {
-        reject(error);
-      }
-    }, 800); // 模拟网络延迟
-  });
+// 更新端口规则 - 使用真实API
+const updatePortRule = async (ruleId: number, ruleData: any): Promise<any> => {
+  try {
+    // 准备API需要的参数格式
+    const params: PortRuleSubmitParams = {
+      nodeId: currentNodeId.value,
+      protocol: ruleData.protocol,
+      port: ruleData.port,
+      sourceType: ruleData.sourceType,
+      sourceAddress: ruleData.sourceAddress, // 直接使用表单中的 sourceAddress
+      strategy: ruleData.strategy,
+      zone: ruleData.zone,
+      family: ruleData.family,
+      permanent: ruleData.permanent,
+      description: ruleData.description || ''
+    };
+    
+    // 调用真实API
+    const { success, data, message } = await updatePortRuleApi(ruleId, params);
+    
+    if (success && data) {
+      // 更新成功，刷新当前节点的端口规则列表
+      await fetchPortRulesByNodeId(currentNodeId.value);
+      
+      return { success: true, data };
+    } else {
+      throw new Error(message || '更新端口规则失败');
+    }
+  } catch (error) {
+    console.error('更新端口规则失败:', error);
+    throw error;
+  }
 };
 
 const deletePortRule = (row: PortRule | null) => {
@@ -923,24 +929,44 @@ const cancelPortRuleForm = () => {
 };
 
 const editPortRule = (row: PortRule) => {
-  // 设置表单模式为编辑
+  // 1. 设置编辑模式和规则ID
   formMode.value = 'edit';
   editingRuleId.value = row.id;
-  
-  // 将行数据填充到表单中
-  Object.assign(portRuleForm, {
+
+  // 记录原始策略值和类型（便于调试）
+  console.log('编辑 - 原始策略值:', row.strategy, '类型:', typeof row.strategy);
+
+  // 2. 准备表单数据并确保策略值类型正确
+  const formData = {
     protocol: row.protocol.toLowerCase(),
     port: row.port,
     sourceType: row.sourceType,
-    sourceAddress: row.sourceType === 'specific' ? row.sourceAddress : '',
-    strategy: row.strategy,
+    sourceAddress: row.sourceAddress,
+    strategy: row.strategy === 'drop' ? 'drop' : 'accept', // 确保是字符串
     zone: row.zone,
     family: row.family,
     permanent: row.permanent,
     description: row.description
-  });
+  };
+
+  // 3. 逐个设置表单值，确保响应式更新
+  portRuleForm.protocol = formData.protocol;
+  portRuleForm.port = formData.port;
+  portRuleForm.sourceType = formData.sourceType;
+  portRuleForm.sourceAddress = formData.sourceAddress;
+  portRuleForm.strategy = formData.strategy;
+  portRuleForm.zone = formData.zone;
+  portRuleForm.family = formData.family;
+  portRuleForm.permanent = formData.permanent;
+  portRuleForm.description = formData.description;
   
-  // 显示抽屉
+  // 4. 更新渲染计数器强制视图刷新
+  forceRender.value += 1;
+  
+  // 打印设置后的策略值（便于调试）
+  console.log('编辑 - 设置后策略值:', portRuleForm.strategy, '类型:', typeof portRuleForm.strategy);
+  
+  // 5. 打开抽屉
   portRuleDrawerVisible.value = true;
 };
 
@@ -1534,7 +1560,8 @@ onMounted(async () => {
               <el-table-column label="地址" width="150">
                 <template #default="{ row }">
                   <span v-if="row.sourceType === 'specific'">{{ row.sourceAddress }}</span>
-                  <span v-else>any</span>
+                  <span v-else-if="row.sourceType === 'any' && row.sourceAddress === '0.0.0.0'">any</span>
+                  <span v-else>{{ row.sourceAddress }}</span>
                 </template>
               </el-table-column>
               <el-table-column label="描述" prop="description" min-width="180" show-overflow-tooltip />
@@ -1795,10 +1822,30 @@ onMounted(async () => {
           </div>
         </el-form-item>
         <el-form-item label="策略" prop="strategy">
-          <el-radio-group v-model="portRuleForm.strategy">
-            <el-radio label="accept">允许</el-radio>
-            <el-radio label="drop">拒绝</el-radio>
-          </el-radio-group>
+          <div class="custom-radio-group">
+            <div class="custom-radio" :class="{ 'is-active': portRuleForm.strategy === 'accept' }">
+              <input
+                type="radio"
+                id="strategy-accept"
+                name="strategy"
+                value="accept"
+                v-model="portRuleForm.strategy"
+                @change="forceRender += 1"
+              />
+              <label for="strategy-accept">允许</label>
+            </div>
+            <div class="custom-radio" :class="{ 'is-active': portRuleForm.strategy === 'drop' }">
+              <input
+                type="radio"
+                id="strategy-drop"
+                name="strategy"
+                value="drop"
+                v-model="portRuleForm.strategy"
+                @change="forceRender += 1"
+              />
+              <label for="strategy-drop">拒绝</label>
+            </div>
+          </div>
         </el-form-item>
         <el-form-item label="区域" prop="zone">
           <el-select v-model="portRuleForm.zone" class="w-full">
@@ -1952,5 +1999,54 @@ onMounted(async () => {
   .md\:flex-row {
     flex-direction: row;
   }
+}
+/* 自定义单选按钮样式 */
+.custom-radio-group {
+  display: flex;
+  align-items: center;
+}
+.custom-radio {
+  position: relative;
+  margin-right: 30px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.custom-radio input[type="radio"] {
+  opacity: 0;
+  position: absolute;
+}
+.custom-radio label {
+  position: relative;
+  padding-left: 25px;
+  cursor: pointer;
+  line-height: 1;
+  font-weight: 500;
+}
+.custom-radio label:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 50%;
+  background-color: #fff;
+  transition: all 0.15s;
+}
+.custom-radio.is-active label:before {
+  border-color: #409eff;
+  background-color: #409eff;
+}
+.custom-radio.is-active label:after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #fff;
 }
 </style> 

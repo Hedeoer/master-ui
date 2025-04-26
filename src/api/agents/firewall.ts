@@ -61,7 +61,7 @@ export interface PortRuleSubmitParams {
   protocol: string;      // 协议类型，如tcp, udp
   port: string;          // 端口号或端口范围
   sourceType: string;    // 来源类型：any或specific
-  sourceAddress?: string; // 指定来源地址，当sourceType为specific时必填
+  sourceAddress?: string; // 指定来源地址，当sourceType为specific时必填，sourceType为any时,sourceAddress为0.0.0.0
   strategy: 'accept' | 'drop'; // 策略，接受或拒绝
   zone: string;          // 区域，如public, private, internal, dmz
   family: 'ipv4' | 'ipv6' | 'both'; // IP类型
