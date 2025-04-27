@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, defineEmits, defineProps, watch } from 'vue';
+import { ref, defineEmits, defineProps, watch, computed } from 'vue';
 import { ElButton, ElPopover, ElSelect, ElOption } from 'element-plus';
 import { RefreshRight } from '@element-plus/icons-vue';
 
@@ -28,13 +28,21 @@ watch(localRefreshRate, (newVal) => {
 // 刷新频率选项
 const refreshRates = [
   { label: '不刷新', value: '不刷新' },
-  { label: '5 秒/次', value: '5' },
-  { label: '10 秒/次', value: '10' },
   { label: '30 秒/次', value: '30' },
   { label: '60 秒/次', value: '60' },
   { label: '120 秒/次', value: '120' },
   { label: '300 秒/次', value: '300' }
 ];
+
+// 计算按钮显示文本
+const buttonText = computed(() => {
+  if (localRefreshRate.value === '不刷新') {
+    return '刷新频率';
+  }
+  // 从选项中找到对应的标签
+  const option = refreshRates.find(item => item.value === localRefreshRate.value);
+  return option ? option.label : '刷新频率';
+});
 </script>
 
 <template>
@@ -42,7 +50,7 @@ const refreshRates = [
     <el-popover placement="bottom" :width="200" trigger="click">
       <template #reference>
         <el-button>
-          刷新频率
+          {{ buttonText }}
           <el-icon class="ml-1"><RefreshRight /></el-icon>
         </el-button>
       </template>

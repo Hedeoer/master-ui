@@ -17,6 +17,7 @@ declare global {
   const addDictItemApi: typeof import('./api/system/dictItem')['addDictItemApi']
   const addJobApi: typeof import('./api/job/job')['addJobApi']
   const addMenuApi: typeof import('./api/system/menu')['addMenuApi']
+  const addPortRuleApi: typeof import('./api/agents/firewall')['addPortRuleApi']
   const addRoleApi: typeof import('./api/system/role')['addRoleApi']
   const addUserApi: typeof import('./api/system/user')['addUserApi']
   const asyncComputed: typeof import('@vueuse/core')['asyncComputed']
@@ -62,12 +63,15 @@ declare global {
   const deleteFileApi: typeof import('./api/system/file')['deleteFileApi']
   const deleteJobApi: typeof import('./api/job/job')['deleteJobApi']
   const deleteMenuApi: typeof import('./api/system/menu')['deleteMenuApi']
+  const deletePortRulesApi: typeof import('./api/agents/firewall')['deletePortRulesApi']
   const deleteRoleApi: typeof import('./api/system/role')['deleteRoleApi']
   const deleteUserApi: typeof import('./api/system/user')['deleteUserApi']
   const eagerComputed: typeof import('@vueuse/core')['eagerComputed']
   const effectScope: typeof import('vue')['effectScope']
   const existenceUserApi: typeof import('./api/system/user')['existenceUserApi']
   const extendRef: typeof import('@vueuse/core')['extendRef']
+  const fetchNodeListApi: typeof import('./api/agents/firewall')['fetchNodeListApi']
+  const fetchPortRulesByNodeId: typeof import('./api/agents/firewall')['fetchPortRulesByNodeId']
   const getActivePinia: typeof import('pinia')['getActivePinia']
   const getCurrentInstance: typeof import('vue')['getCurrentInstance']
   const getCurrentScope: typeof import('vue')['getCurrentScope']
@@ -217,6 +221,7 @@ declare global {
   const updateDictItemApi: typeof import('./api/system/dictItem')['updateDictItemApi']
   const updateJobApi: typeof import('./api/job/job')['updateJobApi']
   const updateMenuApi: typeof import('./api/system/menu')['updateMenuApi']
+  const updatePortRuleApi: typeof import('./api/agents/firewall')['updatePortRuleApi']
   const updateRoleApi: typeof import('./api/system/role')['updateRoleApi']
   const updateRoleMenuApi: typeof import('./api/system/roleMenu')['updateRoleMenuApi']
   const updateUserApi: typeof import('./api/system/user')['updateUserApi']
@@ -423,6 +428,9 @@ declare global {
   export type { Component, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
+  export type { PortRule, PortRuleSubmitParams } from './api/agents/firewall'
+  import('./api/agents/firewall')
+  // @ts-ignore
   export type { LottieParams } from './hooks/lottie'
   import('./hooks/lottie')
 }
@@ -442,6 +450,7 @@ declare module 'vue' {
     readonly addDictItemApi: UnwrapRef<typeof import('./api/system/dictItem')['addDictItemApi']>
     readonly addJobApi: UnwrapRef<typeof import('./api/job/job')['addJobApi']>
     readonly addMenuApi: UnwrapRef<typeof import('./api/system/menu')['addMenuApi']>
+    readonly addPortRuleApi: UnwrapRef<typeof import('./api/agents/firewall')['addPortRuleApi']>
     readonly addRoleApi: UnwrapRef<typeof import('./api/system/role')['addRoleApi']>
     readonly addUserApi: UnwrapRef<typeof import('./api/system/user')['addUserApi']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
@@ -487,12 +496,15 @@ declare module 'vue' {
     readonly deleteFileApi: UnwrapRef<typeof import('./api/system/file')['deleteFileApi']>
     readonly deleteJobApi: UnwrapRef<typeof import('./api/job/job')['deleteJobApi']>
     readonly deleteMenuApi: UnwrapRef<typeof import('./api/system/menu')['deleteMenuApi']>
+    readonly deletePortRulesApi: UnwrapRef<typeof import('./api/agents/firewall')['deletePortRulesApi']>
     readonly deleteRoleApi: UnwrapRef<typeof import('./api/system/role')['deleteRoleApi']>
     readonly deleteUserApi: UnwrapRef<typeof import('./api/system/user')['deleteUserApi']>
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly existenceUserApi: UnwrapRef<typeof import('./api/system/user')['existenceUserApi']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
+    readonly fetchNodeListApi: UnwrapRef<typeof import('./api/agents/firewall')['fetchNodeListApi']>
+    readonly fetchPortRulesByNodeId: UnwrapRef<typeof import('./api/agents/firewall')['fetchPortRulesByNodeId']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
@@ -642,6 +654,7 @@ declare module 'vue' {
     readonly updateDictItemApi: UnwrapRef<typeof import('./api/system/dictItem')['updateDictItemApi']>
     readonly updateJobApi: UnwrapRef<typeof import('./api/job/job')['updateJobApi']>
     readonly updateMenuApi: UnwrapRef<typeof import('./api/system/menu')['updateMenuApi']>
+    readonly updatePortRuleApi: UnwrapRef<typeof import('./api/agents/firewall')['updatePortRuleApi']>
     readonly updateRoleApi: UnwrapRef<typeof import('./api/system/role')['updateRoleApi']>
     readonly updateRoleMenuApi: UnwrapRef<typeof import('./api/system/roleMenu')['updateRoleMenuApi']>
     readonly updateUserApi: UnwrapRef<typeof import('./api/system/user')['updateUserApi']>

@@ -46,8 +46,20 @@ defineOptions({
   name: 'AgentFirewall',
 });
 
+// 端口使用详情接口
+interface PortUsageDetail {
+  port: string;           // 端口号
+  processName: string;    // 使用该端口的进程名称
+  pid?: number;           // 进程ID (可选)
+  commandLine?: string;   // 完整命令行 (可选)
+  listenAddress?: string; // 监听地址 (可选)
+}
+
 // 活动标签页
 const activeTab = ref('port');
+
+// 当前查看的端口详情
+const selectedPort = ref('');
 
 // 加载状态
 const loading = ref(false);
@@ -58,6 +70,12 @@ const firewallName = ref('UFW');
 const firewallVersion = ref('0.36.2');
 const pingDisabled = ref(true);
 const maskShow = ref(false);
+
+// 获取选中端口的详细信息
+const getSelectedPortDetail = (row: PortRule, portNumber: string): PortUsageDetail | undefined => {
+  if (!row.portUsageDetails || !portNumber) return undefined;
+  return row.portUsageDetails.find(detail => detail.port === portNumber);
+};
 
 // --- 刷新频率设置 ---
 const refreshRate = ref('不刷新');
@@ -189,7 +207,9 @@ const refreshData = () => {
 };
 
 // --- 定义类型接口 ---
-interface PortRule extends ApiPortRule {}
+interface PortRule extends ApiPortRule {
+  portUsageDetails?: PortUsageDetail[]; // 添加端口使用详情
+}
 
 interface IPRule {
   id: number;
@@ -222,7 +242,10 @@ const portRules = ref<PortRule[]>([
     usedStatus: 'inUsed',
     zone: 'public',
     family: 'ipv4',
-    permanent: true
+    permanent: true,
+    portUsageDetails: [
+      { port: '22', processName: 'sshd', pid: 567, commandLine: '/usr/sbin/sshd', listenAddress: '0.0.0.0:22' }
+    ]
   },
   { 
     id: 2, 
@@ -236,7 +259,10 @@ const portRules = ref<PortRule[]>([
     usedStatus: 'inUsed',
     zone: 'public',
     family: 'both',
-    permanent: true
+    permanent: true,
+    portUsageDetails: [
+      { port: '80', processName: 'nginx', pid: 1234, listenAddress: '0.0.0.0:80' }
+    ]
   },
   { 
     id: 3, 
@@ -250,7 +276,10 @@ const portRules = ref<PortRule[]>([
     usedStatus: 'inUsed',
     zone: 'public',
     family: 'both',
-    permanent: true
+    permanent: true,
+    portUsageDetails: [
+      { port: '443', processName: 'nginx', pid: 1234, listenAddress: '0.0.0.0:443' }
+    ]
   },
   { 
     id: 4, 
@@ -278,7 +307,10 @@ const portRules = ref<PortRule[]>([
     usedStatus: 'inUsed',
     zone: 'public',
     family: 'both',
-    permanent: true
+    permanent: true,
+    portUsageDetails: [
+      { port: '53', processName: 'named', pid: 890, listenAddress: '0.0.0.0:53' }
+    ]
   },
   { 
     id: 6, 
@@ -293,10 +325,45 @@ const portRules = ref<PortRule[]>([
     usedPorts: ['8080', '8082', '8085'],
     zone: 'internal',
     family: 'ipv4',
-    permanent: true
+    permanent: true,
+    portUsageDetails: [
+      { port: '8080', processName: 'java', pid: 5678, commandLine: 'java -jar app.jar' },
+      { port: '8082', processName: 'node', pid: 9012, commandLine: 'node server.js' },
+      { port: '8085', processName: 'python', pid: 3456, commandLine: 'python app.py' }
+    ]
   },
   { 
     id: 7, 
+    nodeId: '', 
+    protocol: 'TCP', 
+    port: '5000-5020', 
+    strategy: 'drop', 
+    sourceType: 'any',
+    sourceAddress: '0.0.0.0',
+    description: '大量端口测试', 
+    usedStatus: 'inUsed',
+    usedPorts: ['5000', '5001', '5002', '5003', '5004', '5005', '5006', '5007', '5008', '5009', '5010', '5011', '5012'],
+    zone: 'dmz',
+    family: 'ipv6',
+    permanent: true,
+    portUsageDetails: [
+      { port: '5000', processName: 'flask', pid: 2001, commandLine: 'python -m flask run' },
+      { port: '5001', processName: 'node', pid: 2002, commandLine: 'node server.js' },
+      { port: '5002', processName: 'java', pid: 2003, commandLine: 'java -jar service.jar' },
+      { port: '5003', processName: 'nginx', pid: 2004, commandLine: 'nginx -g daemon off;' },
+      { port: '5004', processName: 'php-fpm', pid: 2005, commandLine: 'php-fpm' },
+      { port: '5005', processName: 'tomcat', pid: 2006, commandLine: 'java -jar tomcat.jar' },
+      { port: '5006', processName: 'redis', pid: 2007, commandLine: 'redis-server' },
+      { port: '5007', processName: 'mysql', pid: 2008, commandLine: 'mysqld' },
+      { port: '5008', processName: 'mongo', pid: 2009, commandLine: 'mongod' },
+      { port: '5009', processName: 'docker', pid: 2010, commandLine: 'docker-proxy' },
+      { port: '5010', processName: 'apache', pid: 2011, commandLine: 'httpd' },
+      { port: '5011', processName: 'postgres', pid: 2012, commandLine: 'postgres' },
+      { port: '5012', processName: 'memcached', pid: 2013, commandLine: 'memcached' }
+    ]
+  },
+  { 
+    id: 8, 
     nodeId: '', 
     protocol: 'TCP', 
     port: '25', 
@@ -310,7 +377,7 @@ const portRules = ref<PortRule[]>([
     permanent: true
   },
   { 
-    id: 8, 
+    id: 9, 
     nodeId: '', 
     protocol: 'TCP', 
     port: '21', 
@@ -324,7 +391,7 @@ const portRules = ref<PortRule[]>([
     permanent: false
   },
   { 
-    id: 9, 
+    id: 10, 
     nodeId: '', 
     protocol: 'TCP', 
     port: '3389', 
@@ -338,7 +405,7 @@ const portRules = ref<PortRule[]>([
     permanent: true
   },
   { 
-    id: 10, 
+    id: 11, 
     nodeId: '', 
     protocol: 'TCP', 
     port: '5900-5910', 
@@ -1521,18 +1588,34 @@ onMounted(async () => {
               <el-table-column label="端口" prop="port" width="120" />
               <el-table-column label="状态" width="150">
                 <template #default="{ row }">
-                  <div v-if="row.port.includes('-') && row.usedStatus" class="status-with-info">
-                    <el-tag type="info" class="mt-1">
-                      已使用 * {{ row.usedPorts?.length || 0 }}
+                  <!-- 单个端口且正在使用 -->
+                  <div v-if="!row.port.includes('-') && !row.port.includes(',') && row.usedStatus">
+                    <el-tag type="info">
+                      已使用: {{ row.portUsageDetails?.[0]?.processName || 'Unknown' }}
                     </el-tag>
-                    <el-popover placement="right" :width="250" v-if="row.usedPorts?.length" trigger="hover">
+                    <el-popover placement="right" :width="300" trigger="hover" v-if="row.portUsageDetails?.length">
                       <template #default>
-                        <div class="used-ports-list">
-                          <div class="used-ports-list-title">已使用端口:</div>
-                          <div class="used-ports-list-content">
-                            <el-tag v-for="(item, index) in row.usedPorts" :key="index" size="small" class="used-port-tag">
-                              {{ item }}
-                            </el-tag>
+                        <div class="port-detail-card">
+                          <div class="port-detail-title">端口使用详情</div>
+                          <div class="port-detail-item">
+                            <span class="port-detail-label">端口:</span>
+                            <span class="port-detail-value">{{ row.port }}</span>
+                          </div>
+                          <div class="port-detail-item">
+                            <span class="port-detail-label">进程:</span>
+                            <span class="port-detail-value">{{ row.portUsageDetails[0].processName }}</span>
+                          </div>
+                          <div class="port-detail-item" v-if="row.portUsageDetails[0].pid">
+                            <span class="port-detail-label">PID:</span>
+                            <span class="port-detail-value">{{ row.portUsageDetails[0].pid }}</span>
+                          </div>
+                          <div class="port-detail-item" v-if="row.portUsageDetails[0].listenAddress">
+                            <span class="port-detail-label">监听地址:</span>
+                            <span class="port-detail-value">{{ row.portUsageDetails[0].listenAddress }}</span>
+                          </div>
+                          <div class="port-detail-item" v-if="row.portUsageDetails[0].commandLine">
+                            <span class="port-detail-label">命令行:</span>
+                            <span class="port-detail-value command-line">{{ row.portUsageDetails[0].commandLine }}</span>
                           </div>
                         </div>
                       </template>
@@ -1541,6 +1624,81 @@ onMounted(async () => {
                       </template>
                     </el-popover>
                   </div>
+                  
+                  <!-- 区间端口或多个端口 -->
+                  <div v-else-if="row.port.includes('-') || row.port.includes(',')">
+                    <div v-if="row.portUsageDetails?.length" class="status-with-info">
+                      <el-tag type="info" class="mt-1">
+                        已使用 * {{ row.portUsageDetails.length }}
+                      </el-tag>
+                      <el-popover placement="right" :width="360" trigger="hover">
+                        <template #default>
+                          <div class="used-ports-list">
+                            <div class="used-ports-list-title">已使用端口:</div>
+                            
+                            <!-- 当使用端口数量小于等于10个，直接全部展示 -->
+                            <div v-if="row.portUsageDetails.length <= 10" class="used-ports-grid">
+                              <div
+                                v-for="(item, index) in row.portUsageDetails" 
+                                :key="index" 
+                                class="port-usage-item"
+                              >
+                                <div class="port-process">
+                                  <span class="port-number">{{ item.port }}</span>
+                                  <span class="process-name">{{ item.processName }}</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <!-- 当使用端口数量大于10个，使用下拉菜单 -->
+                            <div v-else class="port-usage-dropdown">
+                              <div class="select-wrapper">
+                                <el-select v-model="selectedPort" placeholder="选择端口查看详情" style="width: 100%;">
+                                  <el-option
+                                    v-for="item in row.portUsageDetails"
+                                    :key="item.port"
+                                    :label="`${item.port} (${item.processName})`"
+                                    :value="item.port"
+                                  />
+                                </el-select>
+                              </div>
+                              
+                              <!-- 选择端口后展示详情 -->
+                              <div v-if="selectedPort" class="port-detail-card mt-3">
+                                <div class="port-detail-title">端口使用详情</div>
+                                <div v-if="getSelectedPortDetail(row, selectedPort)" class="port-details">
+                                  <div class="port-detail-item">
+                                    <span class="port-detail-label">端口:</span>
+                                    <span class="port-detail-value">{{ selectedPort }}</span>
+                                  </div>
+                                  <div class="port-detail-item">
+                                    <span class="port-detail-label">进程:</span>
+                                    <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.processName }}</span>
+                                  </div>
+                                  <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.pid">
+                                    <span class="port-detail-label">PID:</span>
+                                    <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.pid }}</span>
+                                  </div>
+                                  <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.commandLine">
+                                    <span class="port-detail-label">命令行:</span>
+                                    <span class="port-detail-value command-line">{{ getSelectedPortDetail(row, selectedPort)?.commandLine }}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                        <template #reference>
+                          <el-icon class="info-icon"><InfoFilled /></el-icon>
+                        </template>
+                      </el-popover>
+                    </div>
+                    <div v-else>
+                      <el-tag type="success">未使用</el-tag>
+                    </div>
+                  </div>
+                  
+                  <!-- 默认情况 -->
                   <div v-else>
                     <el-tag type="info" v-if="row.usedStatus">已使用</el-tag>
                     <el-tag type="success" v-else>未使用</el-tag>
@@ -1848,7 +2006,7 @@ onMounted(async () => {
           </div>
         </el-form-item>
         <el-form-item label="区域" prop="zone">
-          <el-select v-model="portRuleForm.zone" class="w-full">
+          <el-select v-model="portRuleForm.zone" class="w-full" :disabled="formMode === 'edit'">
             <el-option label="公共区域" value="public"></el-option>
             <el-option label="私有区域" value="private"></el-option>
             <el-option label="内部区域" value="internal"></el-option>
@@ -1856,7 +2014,7 @@ onMounted(async () => {
           </el-select>
         </el-form-item>
         <el-form-item label="IP类型" prop="family">
-          <el-select v-model="portRuleForm.family" class="w-full">
+          <el-select v-model="portRuleForm.family" class="w-full" :disabled="formMode === 'edit'">
             <el-option label="IPv4" value="ipv4"></el-option>
             <el-option label="IPv6" value="ipv6"></el-option>
             <el-option label="IPv4/IPv6" value="both"></el-option>
@@ -1896,6 +2054,9 @@ onMounted(async () => {
 }
 .mt-4 {
   margin-top: 1rem;
+}
+.mt-3 {
+  margin-top: 0.75rem;
 }
 .p-w-200 {
   width: 200px;
@@ -1976,6 +2137,90 @@ onMounted(async () => {
 .used-port-tag {
   margin: 3px;
 }
+
+/* 新增样式 - 端口使用详情 */
+.port-detail-card {
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 12px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  background-color: #fff;
+}
+
+.port-detail-title {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: #303133;
+  border-bottom: 1px solid #ebeef5;
+  padding-bottom: 8px;
+}
+
+.port-detail-item {
+  display: flex;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.port-detail-label {
+  color: #606266;
+  width: 75px;
+  flex-shrink: 0;
+}
+
+.port-detail-value {
+  color: #303133;
+  flex-grow: 1;
+  word-break: break-word;
+}
+
+.port-detail-value.command-line {
+  font-family: monospace;
+  background-color: #f5f7fa;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.used-ports-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.port-usage-item {
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 6px 10px;
+  background-color: #f5f7fa;
+}
+
+.port-process {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.port-number {
+  font-weight: bold;
+  color: #409EFF;
+}
+
+.process-name {
+  font-family: monospace;
+  color: #67C23A;
+  font-size: 12px;
+}
+
+.port-usage-dropdown {
+  display: flex;
+  flex-direction: column;
+}
+
+.select-wrapper {
+  margin-bottom: 10px;
+}
+
 /* 增强型选择器样式 */
 .el-select-dropdown__item {
   padding: 0 15px;

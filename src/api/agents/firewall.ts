@@ -6,19 +6,114 @@ import { request } from '~/utils/request'
  * 防火墙端口规则接口
  */
 export interface PortRule {
+  /**
+   * 规则ID，唯一标识
+   */
   id: number;
+
+  /**
+   * 节点ID，表示规则所属的节点
+   * 格式通常为字符串UUID或自定义标识符
+   */
   nodeId: string;
+
+  /**
+   * 协议类型
+   * 可能的值: "TCP", "UDP", "TCP/UDP"
+   */
   protocol: string;
+
+  /**
+   * 端口或端口范围
+   * 格式:
+   * - 单个端口: "80"
+   * - 端口范围: "8080-8090"
+   * - 多个端口: "80,443,8080"
+   */
   port: string;
+
+  /**
+   * 策略类型
+   * - "accept": 允许
+   * - "drop": 拒绝
+   */
   strategy: 'accept' | 'drop';
+
+  /**
+   * 来源类型
+   * - "any": 所有IP
+   * - "specific": 指定IP
+   */
   sourceType: string;
+
+  /**
+   * 来源地址
+   * - 当sourceType为"any"时，通常为"0.0.0.0"
+   * - 当sourceType为"specific"时，可以是具体IP或IP范围
+   * 格式:
+   * - 单个IP: "192.168.1.1"
+   * - IP范围: "192.168.1.0/24"
+   * - 多个IP: "192.168.1.1,192.168.1.2"
+   */
   sourceAddress: string;
+
+  /**
+   * 规则描述
+   * 用户自定义的规则说明文本
+   */
   description: string;
+
+  /**
+   * 端口使用状态
+   * - "inUsed": 已使用
+   * - null: 未使用
+   */
   usedStatus: string | null;
+
+  /**
+   * 已使用的端口列表
+   * 仅当端口为范围或多个端口且有部分被使用时存在
+   * 例如: ["8080", "8085"] 表示在范围中这些端口已被使用
+   */
   usedPorts?: string[];
+
+  /**
+   * 防火墙区域
+   * 可能的值:
+   * - "public": 公共区域
+   * - "private": 私有区域
+   * - "internal": 内部区域
+   * - "dmz": DMZ区域
+   */
   zone: string;
+
+  /**
+   * IP类型
+   * - "ipv4": 仅IPv4
+   * - "ipv6": 仅IPv6
+   * - "both": 同时支持IPv4和IPv6
+   */
   family: 'ipv4' | 'ipv6' | 'both';
+
+  /**
+   * 是否永久生效
+   * - true: 规则永久有效
+   * - false: 规则临时有效，系统重启后会失效
+   */
   permanent: boolean;
+
+  /**
+   * 端口使用详情
+   * 记录每个已使用端口的详细信息，包括进程名称、PID等
+   * 例如: [{ port: "8080", processName: "java", pid: 1234 }]
+   */
+  portUsageDetails?: Array<{
+    port: string;           // 端口号
+    processName: string;    // 使用该端口的进程名称
+    pid?: number;           // 进程ID (可选)
+    commandLine?: string;   // 完整命令行 (可选)
+    listenAddress?: string; // 监听地址 (可选)
+  }>;
 }
 
 /**
