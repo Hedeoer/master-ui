@@ -72,9 +72,10 @@ const pingDisabled = ref(true);
 const maskShow = ref(false);
 
 // 获取选中端口的详细信息
-const getSelectedPortDetail = (row: PortRule, portNumber: string): PortUsageDetail | undefined => {
+const getSelectedPortDetail = (row: ApiPortRule, portNumber: string) => {
   if (!row.portUsageDetails || !portNumber) return undefined;
-  return row.portUsageDetails.find(detail => detail.port === portNumber);
+  // 端口号为字符串，portNumber为number，需转换
+  return row.portUsageDetails.find(detail => String(detail.portNumber) === String(portNumber));
 };
 
 // --- 刷新频率设置 ---
@@ -207,9 +208,7 @@ const refreshData = () => {
 };
 
 // --- 定义类型接口 ---
-interface PortRule extends ApiPortRule {
-  portUsageDetails?: PortUsageDetail[]; // 添加端口使用详情
-}
+type PortRule = ApiPortRule;
 
 interface IPRule {
   id: number;
@@ -229,7 +228,7 @@ interface ForwardRule {
 
 // --- 模拟数据 ---
 // 端口规则数据
-const portRules = ref<PortRule[]>([
+const portRules = ref<ApiPortRule[]>([
   { 
     id: 1, 
     nodeId: '', 
@@ -244,7 +243,7 @@ const portRules = ref<PortRule[]>([
     family: 'ipv4',
     permanent: true,
     portUsageDetails: [
-      { port: '22', processName: 'sshd', pid: 567, commandLine: '/usr/sbin/sshd', listenAddress: '0.0.0.0:22' }
+      { id: '1', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 22, processName: 'sshd', processId: 567, commandLine: '/usr/sbin/sshd', listenAddress: '0.0.0.0:22' }
     ]
   },
   { 
@@ -261,7 +260,7 @@ const portRules = ref<PortRule[]>([
     family: 'both',
     permanent: true,
     portUsageDetails: [
-      { port: '80', processName: 'nginx', pid: 1234, listenAddress: '0.0.0.0:80' }
+      { id: '2', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 80, processName: 'nginx', processId: 1234, listenAddress: '0.0.0.0:80' }
     ]
   },
   { 
@@ -278,7 +277,7 @@ const portRules = ref<PortRule[]>([
     family: 'both',
     permanent: true,
     portUsageDetails: [
-      { port: '443', processName: 'nginx', pid: 1234, listenAddress: '0.0.0.0:443' }
+      { id: '3', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 443, processName: 'nginx', processId: 1234, listenAddress: '0.0.0.0:443' }
     ]
   },
   { 
@@ -293,7 +292,12 @@ const portRules = ref<PortRule[]>([
     usedStatus: null,
     zone: 'private',
     family: 'ipv4',
-    permanent: false
+    permanent: false,
+    portUsageDetails: [
+      { id: '4', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 3000, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:3000' },
+      { id: '4', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'udp', portNumber: 3000, processName: 'python', processId: 3456, commandLine: 'python app.py', listenAddress: '0.0.0.0:3000' },
+      { id: '4', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 4000, processName: 'node', processId: 9012, commandLine: 'node server.js', listenAddress: '0.0.0.0:4000' }
+    ]
   },
   { 
     id: 5, 
@@ -309,7 +313,7 @@ const portRules = ref<PortRule[]>([
     family: 'both',
     permanent: true,
     portUsageDetails: [
-      { port: '53', processName: 'named', pid: 890, listenAddress: '0.0.0.0:53' }
+      { id: '5', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'udp', portNumber: 53, processName: 'named', processId: 890, commandLine: 'named', listenAddress: '0.0.0.0:53' }
     ]
   },
   { 
@@ -327,9 +331,9 @@ const portRules = ref<PortRule[]>([
     family: 'ipv4',
     permanent: true,
     portUsageDetails: [
-      { port: '8080', processName: 'java', pid: 5678, commandLine: 'java -jar app.jar' },
-      { port: '8082', processName: 'node', pid: 9012, commandLine: 'node server.js' },
-      { port: '8085', processName: 'python', pid: 3456, commandLine: 'python app.py' }
+      { id: '6', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 8080, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:8080' },
+      { id: '6', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 8082, processName: 'node', processId: 9012, commandLine: 'node server.js', listenAddress: '0.0.0.0:8082' },
+      { id: '6', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 8085, processName: 'python', processId: 3456, commandLine: 'python app.py', listenAddress: '0.0.0.0:8085' }
     ]
   },
   { 
@@ -347,19 +351,19 @@ const portRules = ref<PortRule[]>([
     family: 'ipv6',
     permanent: true,
     portUsageDetails: [
-      { port: '5000', processName: 'flask', pid: 2001, commandLine: 'python -m flask run' },
-      { port: '5001', processName: 'node', pid: 2002, commandLine: 'node server.js' },
-      { port: '5002', processName: 'java', pid: 2003, commandLine: 'java -jar service.jar' },
-      { port: '5003', processName: 'nginx', pid: 2004, commandLine: 'nginx -g daemon off;' },
-      { port: '5004', processName: 'php-fpm', pid: 2005, commandLine: 'php-fpm' },
-      { port: '5005', processName: 'tomcat', pid: 2006, commandLine: 'java -jar tomcat.jar' },
-      { port: '5006', processName: 'redis', pid: 2007, commandLine: 'redis-server' },
-      { port: '5007', processName: 'mysql', pid: 2008, commandLine: 'mysqld' },
-      { port: '5008', processName: 'mongo', pid: 2009, commandLine: 'mongod' },
-      { port: '5009', processName: 'docker', pid: 2010, commandLine: 'docker-proxy' },
-      { port: '5010', processName: 'apache', pid: 2011, commandLine: 'httpd' },
-      { port: '5011', processName: 'postgres', pid: 2012, commandLine: 'postgres' },
-      { port: '5012', processName: 'memcached', pid: 2013, commandLine: 'memcached' }
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5000, processName: 'flask', processId: 2001, commandLine: 'python -m flask run', listenAddress: '0.0.0.0:5000' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5001, processName: 'node', processId: 2002, commandLine: 'node server.js', listenAddress: '0.0.0.0:5001' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5002, processName: 'java', processId: 2003, commandLine: 'java -jar service.jar', listenAddress: '0.0.0.0:5002' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5003, processName: 'nginx', processId: 2004, commandLine: 'nginx -g daemon off;', listenAddress: '0.0.0.0:5003' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5004, processName: 'php-fpm', processId: 2005, commandLine: 'php-fpm', listenAddress: '0.0.0.0:5004' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5005, processName: 'tomcat', processId: 2006, commandLine: 'java -jar tomcat.jar', listenAddress: '0.0.0.0:5005' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5006, processName: 'redis', processId: 2007, commandLine: 'redis-server', listenAddress: '0.0.0.0:5006' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5007, processName: 'mysql', processId: 2008, commandLine: 'mysqld', listenAddress: '0.0.0.0:5007' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5008, processName: 'mongo', processId: 2009, commandLine: 'mongod', listenAddress: '0.0.0.0:5008' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5009, processName: 'docker', processId: 2010, commandLine: 'docker-proxy', listenAddress: '0.0.0.0:5009' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5010, processName: 'apache', processId: 2011, commandLine: 'httpd', listenAddress: '0.0.0.0:5010' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5011, processName: 'postgres', processId: 2012, commandLine: 'postgres', listenAddress: '0.0.0.0:5011' },
+      { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5012, processName: 'memcached', processId: 2013, commandLine: 'memcached', listenAddress: '0.0.0.0:5012' }
     ]
   },
   { 
@@ -374,7 +378,10 @@ const portRules = ref<PortRule[]>([
     usedStatus: null,
     zone: 'dmz',
     family: 'ipv6',
-    permanent: true
+    permanent: true,
+    portUsageDetails: [
+      { id: '8', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 25, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:25' }
+    ]
   },
   { 
     id: 9, 
@@ -388,7 +395,10 @@ const portRules = ref<PortRule[]>([
     usedStatus: null,
     zone: 'dmz',
     family: 'ipv4',
-    permanent: false
+    permanent: false,
+    portUsageDetails: [
+      { id: '9', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 21, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:21' }
+    ]
   },
   { 
     id: 10, 
@@ -402,7 +412,10 @@ const portRules = ref<PortRule[]>([
     usedStatus: null,
     zone: 'private',
     family: 'both',
-    permanent: true
+    permanent: true,
+    portUsageDetails: [
+      { id: '10', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 3389, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:3389' }
+    ]
   },
   { 
     id: 11, 
@@ -416,7 +429,20 @@ const portRules = ref<PortRule[]>([
     usedStatus: null,
     zone: 'internal',
     family: 'ipv6',
-    permanent: false
+    permanent: false,
+    portUsageDetails: [
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5900, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:5900' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5901, processName: 'node', processId: 2002, commandLine: 'node server.js', listenAddress: '0.0.0.0:5901' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5902, processName: 'java', processId: 2003, commandLine: 'java -jar service.jar', listenAddress: '0.0.0.0:5902' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5903, processName: 'nginx', processId: 2004, commandLine: 'nginx -g daemon off;', listenAddress: '0.0.0.0:5903' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5904, processName: 'php-fpm', processId: 2005, commandLine: 'php-fpm', listenAddress: '0.0.0.0:5904' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5905, processName: 'tomcat', processId: 2006, commandLine: 'java -jar tomcat.jar', listenAddress: '0.0.0.0:5905' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5906, processName: 'redis', processId: 2007, commandLine: 'redis-server', listenAddress: '0.0.0.0:5906' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5907, processName: 'mysql', processId: 2008, commandLine: 'mysqld', listenAddress: '0.0.0.0:5907' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5908, processName: 'mongo', processId: 2009, commandLine: 'mongod', listenAddress: '0.0.0.0:5908' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5909, processName: 'docker', processId: 2010, commandLine: 'docker-proxy', listenAddress: '0.0.0.0:5909' },
+      { id: '11', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5910, processName: 'apache', processId: 2011, commandLine: 'httpd', listenAddress: '0.0.0.0:5910' }
+    ]
   }
 ]);
 
@@ -1589,7 +1615,7 @@ onMounted(async () => {
               <el-table-column label="状态" width="150">
                 <template #default="{ row }">
                   <!-- 单个端口且正在使用 -->
-                  <div v-if="!row.port.includes('-') && !row.port.includes(',') && row.usedStatus">
+                  <div v-if="!row.port.includes('-') && !row.port.includes(',') && row.usedStatus === 'inUsed'">
                     <el-tag type="info">
                       已使用: {{ row.portUsageDetails?.[0]?.processName || 'Unknown' }}
                     </el-tag>
@@ -1602,12 +1628,18 @@ onMounted(async () => {
                             <span class="port-detail-value">{{ row.port }}</span>
                           </div>
                           <div class="port-detail-item">
+                          <span class="port-detail-label">协议:</span>
+                          <span class="port-detail-value">
+                            {{ row.portUsageDetails[0].protocol ? row.portUsageDetails[0].protocol.toUpperCase() : '' }}
+                          </span>
+                          </div>                        
+                          <div class="port-detail-item">
                             <span class="port-detail-label">进程:</span>
                             <span class="port-detail-value">{{ row.portUsageDetails[0].processName }}</span>
                           </div>
-                          <div class="port-detail-item" v-if="row.portUsageDetails[0].pid">
+                          <div class="port-detail-item" v-if="row.portUsageDetails[0].processId">
                             <span class="port-detail-label">PID:</span>
-                            <span class="port-detail-value">{{ row.portUsageDetails[0].pid }}</span>
+                            <span class="port-detail-value">{{ row.portUsageDetails[0].processId }}</span>
                           </div>
                           <div class="port-detail-item" v-if="row.portUsageDetails[0].listenAddress">
                             <span class="port-detail-label">监听地址:</span>
@@ -1627,7 +1659,7 @@ onMounted(async () => {
                   
                   <!-- 区间端口或多个端口 -->
                   <div v-else-if="row.port.includes('-') || row.port.includes(',')">
-                    <div v-if="row.portUsageDetails?.length" class="status-with-info">
+                    <div v-if="row.usedStatus === 'inUsed' && row.portUsageDetails?.length" class="status-with-info">
                       <el-tag type="info" class="mt-1">
                         已使用 * {{ row.portUsageDetails.length }}
                       </el-tag>
@@ -1643,10 +1675,15 @@ onMounted(async () => {
                                 :key="index" 
                                 class="port-usage-item"
                               >
-                                <div class="port-process">
-                                  <span class="port-number">{{ item.port }}</span>
-                                  <span class="process-name">{{ item.processName }}</span>
-                                </div>
+                              <div class="port-process">
+                                <span class="port-number">
+                                  {{ item.portNumber }}
+                                  <el-tag type="info" size="small" style="margin-left:4px;">
+                                    {{ item.protocol ? item.protocol.toUpperCase() : '' }}
+                                  </el-tag>
+                                </span>
+                                <span class="process-name">{{ item.processName }}</span>
+                              </div>
                               </div>
                             </div>
                             
@@ -1656,9 +1693,9 @@ onMounted(async () => {
                                 <el-select v-model="selectedPort" placeholder="选择端口查看详情" style="width: 100%;">
                                   <el-option
                                     v-for="item in row.portUsageDetails"
-                                    :key="item.port"
-                                    :label="`${item.port} (${item.processName})`"
-                                    :value="item.port"
+                                    :key="item.portNumber"
+                                    :label="`${item.portNumber} (${item.protocol ? item.protocol.toUpperCase() : ''}) - ${item.processName}`"
+                                    :value="item.portNumber"
                                   />
                                 </el-select>
                               </div>
@@ -1672,12 +1709,18 @@ onMounted(async () => {
                                     <span class="port-detail-value">{{ selectedPort }}</span>
                                   </div>
                                   <div class="port-detail-item">
+                                    <span class="port-detail-label">协议:</span>
+                                    <span class="port-detail-value">
+                                      {{ getSelectedPortDetail(row, selectedPort)?.protocol ? getSelectedPortDetail(row, selectedPort)?.protocol.toUpperCase() : '' }}
+                                    </span>
+                                  </div>
+                                  <div class="port-detail-item">
                                     <span class="port-detail-label">进程:</span>
                                     <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.processName }}</span>
                                   </div>
-                                  <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.pid">
+                                  <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.processId">
                                     <span class="port-detail-label">PID:</span>
-                                    <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.pid }}</span>
+                                    <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.processId }}</span>
                                   </div>
                                   <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.commandLine">
                                     <span class="port-detail-label">命令行:</span>
@@ -1700,7 +1743,7 @@ onMounted(async () => {
                   
                   <!-- 默认情况 -->
                   <div v-else>
-                    <el-tag type="info" v-if="row.usedStatus">已使用</el-tag>
+                    <el-tag type="info" v-if="row.usedStatus === 'inUsed'">已使用</el-tag>
                     <el-tag type="success" v-else>未使用</el-tag>
                   </div>
                 </template>

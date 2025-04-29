@@ -105,14 +105,21 @@ export interface PortRule {
   /**
    * 端口使用详情
    * 记录每个已使用端口的详细信息，包括进程名称、PID等
-   * 例如: [{ port: "8080", processName: "java", pid: 1234 }]
+   * 对齐后端返回字段
    */
   portUsageDetails?: Array<{
-    port: string;           // 端口号
-    processName: string;    // 使用该端口的进程名称
-    pid?: number;           // 进程ID (可选)
-    commandLine?: string;   // 完整命令行 (可选)
-    listenAddress?: string; // 监听地址 (可选)
+    id: string;
+    createTime: string | null;
+    createdBy: string | null;
+    updateTime: string | null;
+    updatedBy: string | null;
+    agentId: string;
+    protocol: string;
+    portNumber: number;
+    processName: string;
+    processId: number;
+    commandLine: string;
+    listenAddress: string;
   }>;
 }
 
