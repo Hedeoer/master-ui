@@ -124,6 +124,36 @@ export interface PortRule {
 }
 
 /**
+ * 防火墙状态信息接口
+ */
+export interface FirewallStatus {
+  /**
+   * 防火墙运行状态
+   * - "running": 运行中
+   * - "not running": 已停止
+   */
+  status: 'running' | 'not running';
+  
+  /**
+   * 防火墙名称
+   * 如: "UFW", "Firewalld", "IPTables"等
+   */
+  name: string;
+  
+  /**
+   * 防火墙版本号
+   */
+  version: string;
+  
+  /**
+   * Ping响应状态
+   * - "Enable": 允许Ping
+   * - "Disable": 禁止Ping
+   */
+  pingStatus: 'Enable' | 'Disable';
+}
+
+/**
  * 防火墙API路径
  */
 enum Api {
@@ -207,6 +237,47 @@ export function deletePortRulesApi(nodeId: string, ruleIds: number[]) {
     data: {
       nodeId,
       ruleIds
+    },
+    repeatSubmit: false // 防止重复提交
+  })
+}
+
+/**
+ * 获取防火墙状态信息
+ * @param nodeId 节点ID
+ * @returns 防火墙状态信息
+ */
+export function fetchFirewallStatusApi(nodeId: string) {
+  return request.get<ApiResult<FirewallStatus>>(`${Api.Status}/${nodeId}`)
+}
+
+/**
+ * 操作防火墙
+ * @param nodeId 节点ID
+ * @param operation 操作类型，"start"、"stop"、"restart"
+ * @returns 操作结果
+ */
+export function operateFirewallApi(nodeId: string, operation: 'start' | 'stop' | 'restart') {
+  return request.post<ApiResult<boolean>>(Api.Operation, {
+    data: { 
+      nodeId,
+      operation 
+    },
+    repeatSubmit: false // 防止重复提交
+  })
+}
+
+/**
+ * 设置Ping响应状态
+ * @param nodeId 节点ID
+ * @param pingStatus Ping响应状态，"Enable" 允许，"Disable" 禁止
+ * @returns 操作结果
+ */
+export function setPingStatusApi(nodeId: string, pingStatus: 'Enable' | 'Disable') {
+  return request.post<ApiResult<boolean>>(`${Api.Operation}/ping`, {
+    data: { 
+      nodeId,
+      pingStatus 
     },
     repeatSubmit: false // 防止重复提交
   })

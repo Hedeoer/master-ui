@@ -37,8 +37,12 @@ import {
   addPortRuleApi,
   updatePortRuleApi,
   deletePortRulesApi,
+  fetchFirewallStatusApi,
+  operateFirewallApi,
+  setPingStatusApi,
   type PortRule as ApiPortRule,
-  type PortRuleSubmitParams
+  type PortRuleSubmitParams,
+  type FirewallStatus
 } from '~/api/agents/firewall';
 
 // 定义组件名称，与路由name保持一致
@@ -65,11 +69,47 @@ const selectedPort = ref('');
 const loading = ref(false);
 
 // --- 防火墙状态数据 ---
-const firewallStatus = ref('running'); // 'running' 或 'not running'
+const firewallStatus = ref<'running' | 'not running'>('running'); // 'running' 或 'not running'
 const firewallName = ref('UFW');
 const firewallVersion = ref('0.36.2');
 const pingDisabled = ref(true);
 const maskShow = ref(false);
+
+// 获取防火墙状态信息
+const fetchFirewallStatus = async () => {
+  try {
+    loading.value = true;
+    // 如果未选择节点，无法获取防火墙状态
+    if (!currentNodeId.value) {
+      ElMessage({
+        type: 'warning',
+        message: '请先选择一个节点'
+      });
+      loading.value = false;
+      return;
+    }
+    
+    const { success, data } = await fetchFirewallStatusApi(currentNodeId.value);
+    
+    if (success && data) {
+      firewallStatus.value = data.status;
+      firewallName.value = data.name;
+      firewallVersion.value = data.version;
+      pingDisabled.value = data.pingStatus === 'Disable';
+      
+      // 更新遮罩显示状态
+      maskShow.value = data.status !== 'running';
+    }
+  } catch (error) {
+    console.error('获取防火墙状态失败:', error);
+    ElMessage({
+      type: 'warning',
+      message: '获取防火墙状态信息失败'
+    });
+  } finally {
+    loading.value = false;
+  }
+};
 
 // 获取选中端口的详细信息
 const getSelectedPortDetail = (row: ApiPortRule, portNumber: string) => {
@@ -260,7 +300,7 @@ const portRules = ref<ApiPortRule[]>([
     family: 'both',
     permanent: true,
     portUsageDetails: [
-      { id: '2', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 80, processName: 'nginx', processId: 1234, listenAddress: '0.0.0.0:80' }
+      { id: '2', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 80, processName: 'nginx', processId: 1234, listenAddress: '0.0.0.0:80', commandLine: '/usr/sbin/nginx' }
     ]
   },
   { 
@@ -277,7 +317,7 @@ const portRules = ref<ApiPortRule[]>([
     family: 'both',
     permanent: true,
     portUsageDetails: [
-      { id: '3', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 443, processName: 'nginx', processId: 1234, listenAddress: '0.0.0.0:443' }
+      { id: '3', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 443, processName: 'nginx', processId: 1234, listenAddress: '0.0.0.0:443', commandLine: '/usr/sbin/nginx' }
     ]
   },
   { 
@@ -620,34 +660,89 @@ const paginatedForwardRules = computed(() => {
 });
 
 // --- 防火墙基本操作方法 ---
-const operateFirewall = (operation: string) => {
+const operateFirewall = async (operation: 'start' | 'stop' | 'restart') => {
+  // 如果未选择节点，无法操作防火墙
+  if (!currentNodeId.value) {
+    ElMessage({
+      type: 'warning',
+      message: '请先选择一个节点'
+    });
+    return;
+  }
+  
   loading.value = true;
-  // 模拟操作延迟
-  setTimeout(() => {
-    if (operation === 'start') {
-      firewallStatus.value = 'running';
-      // 防火墙启动后刷新数据
-      refreshData();
-    } else if (operation === 'stop') {
-      firewallStatus.value = 'not running';
-    } else if (operation === 'restart') {
-      firewallStatus.value = 'running';
-      // 防火墙重启后刷新数据
-      refreshData();
+  
+  try {
+    const { success, message } = await operateFirewallApi(currentNodeId.value, operation);
+    
+    if (success) {
+      ElMessage({
+        type: 'success',
+        message: `防火墙${operation === 'start' ? '启动' : operation === 'stop' ? '停止' : '重启'}成功`
+      });
+      
+      // 刷新防火墙状态
+      await fetchFirewallStatus();
+      
+      // 如果防火墙启动或重启后，且当前有选中节点，则刷新数据
+      if ((operation === 'start' || operation === 'restart') && currentNodeId.value) {
+        refreshData();
+      }
+    } else {
+      ElMessage({
+        type: 'error',
+        message: message || `防火墙${operation === 'start' ? '启动' : operation === 'stop' ? '停止' : '重启'}失败`
+      });
     }
+  } catch (error) {
+    console.error(`防火墙${operation}操作失败:`, error);
+    ElMessage({
+      type: 'error',
+      message: `防火墙${operation === 'start' ? '启动' : operation === 'stop' ? '停止' : '重启'}失败`
+    });
+  } finally {
     loading.value = false;
-  }, 1000);
+  }
 };
 
-const togglePing = () => {
-  pingDisabled.value = !pingDisabled.value;
+const togglePing = async () => {
+  // 如果未选择节点，无法设置Ping响应状态
+  if (!currentNodeId.value) {
+    ElMessage({
+      type: 'warning',
+      message: '请先选择一个节点'
+    });
+    return;
+  }
   
-  // 提供视觉反馈
-  ElMessageBox.alert(
-    pingDisabled.value ? '已禁止Ping响应' : '已允许Ping响应', 
-    '设置成功',
-    { confirmButtonText: '确定' }
-  );
+  const newStatus = !pingDisabled.value;
+  pingDisabled.value = newStatus; // 先更新UI状态
+  
+  try {
+    const { success, message } = await setPingStatusApi(currentNodeId.value, newStatus ? 'Disable' : 'Enable');
+    
+    if (success) {
+      ElMessage({
+        type: 'success',
+        message: newStatus ? '已禁止Ping响应' : '已允许Ping响应'
+      });
+    } else {
+      // 如果操作失败，恢复原状态
+      pingDisabled.value = !newStatus;
+      ElMessage({
+        type: 'error',
+        message: message || '设置Ping响应状态失败'
+      });
+    }
+  } catch (error) {
+    // 如果操作失败，恢复原状态
+    pingDisabled.value = !newStatus;
+    console.error('设置Ping响应状态失败:', error);
+    ElMessage({
+      type: 'error',
+      message: '设置Ping响应状态失败'
+    });
+  }
 };
 
 // 端口规则弹框相关状态
@@ -1405,9 +1500,18 @@ onMounted(async () => {
       initialNodeId = nodeList.value[0].id;
     }
     
-    // 4. 加载节点数据
+    // 4. 如果有可用节点，先设置当前节点，然后获取防火墙状态
     if (initialNodeId) {
-      await loadNodeData(initialNodeId);
+      // 设置当前节点
+      setCurrentNode(initialNodeId);
+      
+      // 获取防火墙状态信息
+      await fetchFirewallStatus();
+      
+      // 如果防火墙正在运行，加载节点数据
+      if (firewallStatus.value === 'running') {
+        await loadNodeData(initialNodeId);
+      }
     }
   } catch (error) {
     console.error('初始化失败:', error);
