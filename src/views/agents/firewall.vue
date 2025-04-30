@@ -531,9 +531,9 @@ const filteredPortRules = computed(() => {
   // 按状态过滤
   if (portSearchStatus.value) {
     if (portSearchStatus.value === 'used') {
-      result = result.filter(rule => rule.usedStatus !== null);
-    } else if (portSearchStatus.value === 'free') {
-      result = result.filter(rule => rule.usedStatus === null);
+      result = result.filter(rule => rule.usedStatus === 'inUsed');
+    } else if (portSearchStatus.value === 'notUsed') {
+      result = result.filter(rule => rule.usedStatus === 'notUsed');
     }
   }
   
@@ -1553,7 +1553,7 @@ onMounted(async () => {
               <el-select v-model="portSearchStatus" @change="applyPortFilter" clearable class="p-w-150 ml-2">
                 <template #prefix>状态</template>
                 <el-option label="全部" value=""></el-option>
-                <el-option label="未使用" value="free"></el-option>
+                <el-option label="未使用" value="notUsed"></el-option>
                 <el-option label="已使用" value="used"></el-option>
               </el-select>
               <el-select v-model="portSearchStrategy" @change="applyPortFilter" clearable class="p-w-150 ml-2">
@@ -1737,13 +1737,15 @@ onMounted(async () => {
                       </el-popover>
                     </div>
                     <div v-else>
-                      <el-tag type="success">未使用</el-tag>
+                      <el-tag type="success" v-if="row.usedStatus === 'notUsed'">未使用</el-tag>
+                      <el-tag type="success" v-else>未使用</el-tag>
                     </div>
                   </div>
                   
                   <!-- 默认情况 -->
                   <div v-else>
                     <el-tag type="info" v-if="row.usedStatus === 'inUsed'">已使用</el-tag>
+                    <el-tag type="success" v-else-if="row.usedStatus === 'notUsed'">未使用</el-tag>
                     <el-tag type="success" v-else>未使用</el-tag>
                   </div>
                 </template>

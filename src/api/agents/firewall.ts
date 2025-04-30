@@ -66,7 +66,7 @@ export interface PortRule {
   /**
    * 端口使用状态
    * - "inUsed": 已使用
-   * - null: 未使用
+   * - "notUsed": 未使用
    */
   usedStatus: string | null;
 
