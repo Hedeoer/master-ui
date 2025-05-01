@@ -12,6 +12,22 @@ import {
 const { width } = useWindowSize()
 const themeStore = useThemeStore()
 
+// 添加防火墙页面离开检测机制
+onMounted(() => {
+  // 检查是否访问过防火墙页面，且当前不在防火墙页面
+  const visitedFirewall = sessionStorage.getItem('visited_firewall') === 'true';
+  const isFirewallPage = window.location.pathname.includes('/agents/firewall') || 
+                         window.location.hash.includes('/agents/firewall');
+  
+  if (visitedFirewall && !isFirewallPage) {
+    console.log('【BaseLayout】检测到从防火墙页面导航，执行刷新');
+    // 移除标记，避免重复刷新
+    sessionStorage.removeItem('visited_firewall');
+    // 刷新页面
+    window.location.reload();
+  }
+});
+
 /** 初始化侧边栏状态 */
 function initSideCollapse() {
   if (width.value < 768) {

@@ -79,6 +79,10 @@ export const useTabStore = defineStore('tab', {
       const names = state.tabs
         .filter(tab => !!tab.keepAlive && !!tab.name)
         .map(tab => tab.name)
+      
+      // 增加debug信息，帮助排查缓存问题
+      console.log('【TabStore】计算keepAlive缓存组件列表:', [...new Set(names).values()]);
+      
       return [...new Set(names).values()]
     },
   },
@@ -89,6 +93,7 @@ export const useTabStore = defineStore('tab', {
       const themeStore = useThemeStore()
       if (themeStore.settings.cacheTabs) {
         this.tabs = applyCachedTabs()
+        console.log('【TabStore】从缓存初始化tabs:', this.tabs);
         return
       }
 
@@ -98,10 +103,12 @@ export const useTabStore = defineStore('tab', {
       const routes = router.getRoutes().filter(i => i.meta.affix)
       if (!routes.length) {
         this.tabs = []
+        console.log('【TabStore】未找到固定路由，初始化空tabs');
         return
       }
       // 生成固定的tabs
       this.tabs = routesToTabs(routes)
+      console.log('【TabStore】从固定路由初始化tabs:', this.tabs);
     },
     /** 如果需要，则缓存tab */
     cacheIfNeed() {
@@ -116,9 +123,19 @@ export const useTabStore = defineStore('tab', {
       const tabs = cloneDeep(this.tabs)
       // 如果要添加的tab不存在于tabs中，则添加
       if (tab.path && !tabs.map((i: Tab) => i.path).includes(tab.path)) {
+        console.log('【TabStore】添加新tab:', tab);
         tabs.push(tab)
         this.tabs = tabs
         this.cacheIfNeed()
+      } else {
+        // 如果tab已存在，检查是否需要更新keepAlive标志
+        const existingTabIndex = tabs.findIndex((i: Tab) => i.path === tab.path);
+        if (existingTabIndex >= 0 && tab.keepAlive && !tabs[existingTabIndex].keepAlive) {
+          console.log('【TabStore】更新existing tab的keepAlive标志:', tab);
+          tabs[existingTabIndex].keepAlive = true;
+          this.tabs = tabs;
+          this.cacheIfNeed();
+        }
       }
       return Promise.resolve({ tabs })
     },

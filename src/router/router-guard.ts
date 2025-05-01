@@ -63,21 +63,30 @@ export function createRouterGuard(router: Router) {
     if (!userStore.info) {
       const { menus } = await userStore.fetchUserInfo()
       if (menus && menus.length > 0) {
-        const rootRouter = router.getRoutes().find((item: RouteRecordRaw) => item.name === 'root')!
-        // 用户菜单转换成vue-router的路由，并添加到vue-router中
-        menuToRoute(menus as UserMenu[]).forEach((route) => {
-          // 如果route是一级路由且没有子路由。添加到/路由下
-          // fix bug: 一级路由没有子路由但是 children 存在的时候会出问题  --by minisailboat
-          if (!route.children || route.children.length === 0) {
-            rootRouter.children = rootRouter.children.concat(route)
-            router.addRoute(rootRouter)
-          } else {
-            router.addRoute(route)
+        // 用户菜单转换成 vue-router 的路由
+        const dynamicRoutes = menuToRoute(menus as UserMenu[]);
+        // 逐个添加转换后的顶级路由
+        dynamicRoutes.forEach((route) => {
+          try {
+            // 检查路由是否已存在 (确保 route.name 存在且不为空)
+            if (route.name && !router.hasRoute(route.name)) { 
+               router.addRoute(route);
+               console.log(`【Router Guard】动态添加路由: ${String(route.name)}`);
+            } else if (!route.name) {
+               console.warn(`【Router Guard】路由缺少 name 属性，无法添加:`, route);
+            } else {
+               console.warn(`【Router Guard】路由已存在，跳过添加: ${String(route.name)}`);
+               // 可选：如果需要更新，可以在这里 removeRoute + addRoute
+            }
+          } catch (error) {
+             console.error(`【Router Guard】添加路由失败: ${String(route.name)}`, error);
           }
-        })
+        });
       }
+      // 确保在添加完所有路由后才进行重定向
       return next(to.fullPath)
     }
+    // 如果用户信息已存在，则直接放行
     return next()
   })
 
@@ -94,6 +103,14 @@ export function createRouterGuard(router: Router) {
       setTimeout(() => {
         NProgress.done(true)
       }, 200)
+    }
+
+    // 检测从防火墙页面离开的情况
+    if (_from.path === '/agents/firewall' && to.path !== '/agents/firewall') {
+      console.log('【全局守卫】检测到从防火墙页面离开，将在导航后刷新');
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
     }
   })
 }

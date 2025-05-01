@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch, onUnmounted, nextTick, onActivated, onDeactivated } from 'vue';
+import { ref, reactive, onMounted, computed, watch, onUnmounted, nextTick, onActivated, onDeactivated, onBeforeUnmount } from 'vue';
 import {
   ElCard,
   ElTabs,
@@ -30,7 +30,7 @@ import {
 import { Search, Position, Delete, Edit, Plus, Warning, Operation, Setting, InfoFilled, ArrowLeft } from '@element-plus/icons-vue';
 import TableSetting from '../../components/TableSetting.vue';
 import type { FormInstance, FormRules } from 'element-plus';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { 
   fetchPortRulesByNodeId as apiFetchPortRulesByNodeId, 
   fetchNodeListApi,
@@ -45,9 +45,38 @@ import {
   type FirewallStatus
 } from '~/api/agents/firewall';
 
-// 定义组件名称，与路由name保持一致
+// 注意：当前 API (/agents/firewall) 返回 meta.keepAlive 为 false，
+// 但组件名称已定义，且可能被框架的 KeepAlive 机制缓存。
+// 建议与后端确认此路由是否应被缓存。
+// 当前代码已简化，以减少 KeepAlive 可能带来的副作用。
 defineOptions({
-  name: 'AgentFirewall',
+  name: 'agents_firewall', // 修改为与其他路由命名风格一致（小写+下划线）
+  // __meta 非标准属性，仅作标记或注释用途
+  // __meta: {
+  //   keepAlive: true, // 标记组件需要缓存
+  // },
+});
+
+// 添加错误捕获钩子，记录组件树中的错误
+onErrorCaptured((err, instance, info) => {
+  console.error('【ERROR】防火墙组件捕获到错误:', err);
+  console.log('【ERROR】错误来源:', instance);
+  console.log('【ERROR】错误信息:', info);
+  // 返回false表示错误不会继续向上传播
+  return false;
+});
+
+// 添加路由离开守卫，在导航离开后刷新页面
+// 这是一个临时解决方案，确保用户离开防火墙页面后可以正常浏览其他页面
+onBeforeRouteLeave((to, from, next) => {
+  console.log('【离开防火墙】目标路由:', to.path);
+  // 允许导航继续
+  next();
+  // 导航后刷新页面，确保组件完全重新加载
+  setTimeout(() => {
+    console.log('【离开防火墙】执行页面刷新');
+    window.location.reload();
+  }, 100);
 });
 
 // 端口使用详情接口
@@ -171,13 +200,8 @@ watch(activeTab, () => {
   }
 });
 
-// 组件卸载时清除定时器
-onUnmounted(() => {
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-});
+// 组件卸载时清除定时器 (已移至 onUnmounted/onDeactivated)
+// onUnmounted(() => { ... }); // Keep existing onUnmounted for cleanup
 
 // 刷新数据方法
 const refreshData = () => {
@@ -1304,35 +1328,30 @@ const filteredNodeList = computed(() => {
   );
 });
 
-// 加载节点列表（模拟）
+// 加载节点列表
 const fetchNodeList = async (): Promise<any> => {
   try {
-    // 设置加载状态
     loading.value = true;
-    
-    // 调用真实API获取节点列表
-    const { success, data, message } = await fetchNodeListApi();
+    const { success, data, message, code } = await fetchNodeListApi();
     
     if (success && data) {
-      // 将API返回的节点数据适配为本地格式
-        nodeList.value = data.map(node => ({
+      // 适配API返回的节点数据
+      nodeList.value = data.map(node => ({
+        // Assuming AgentNode type has these properties, adjust if needed
         id: node.nodeId || '',
         name: node.nodeName || '',
         ip: node.nodeIp || ''
       }));
       return { success: true, data: nodeList.value };
     } else {
-      // 处理API请求失败情况
       ElMessage.error(message || '获取节点列表失败');
-      return { success: false, message };
+      return { success: false, message, code };
     }
   } catch (error) {
-    // 处理异常情况
     console.error('获取节点列表失败:', error);
     ElMessage.error('获取节点列表失败');
     return { success: false, message: (error as Error).message };
   } finally {
-    // 重置加载状态
     loading.value = false;
   }
 };
@@ -1347,7 +1366,7 @@ const setCurrentNode = (nodeId: string) => {
   }
 };
 
-// 根据节点ID获取端口规则（模拟API）
+// 根据节点ID获取端口规则
 const fetchPortRulesByNodeId = (nodeId: string): Promise<any> => {
   return new Promise((resolve) => {
     // 记录当前的分页和筛选状态
@@ -1526,270 +1545,309 @@ watch(activeTab, (newTab) => {
   }
 });
 
-// 在script部分定义新的状态变量来控制整体页面显示
-const pageReady = ref(false); // 页面是否准备好显示的状态
-const isComponentActive = ref(true); // 组件当前是否激活
-
-// 初始化数据和视图同步
+// 初始化数据和视图同步 - 简化版
 const initializeComponent = async () => {
   try {
-    // 显示加载状态
+    console.log('【初始化】开始初始化组件数据，当前路由:', route.path);
     loading.value = true;
-    pageReady.value = false;
     
     // 预设默认值
     firewallStatus.value = 'not running';
-    firewallName.value = 'FirewallD';
+    firewallName.value = 'FirewallD'; // Or fetch dynamically if possible
     firewallVersion.value = '—';
     pingDisabled.value = true;
     maskShow.value = true;
+    portRules.value = []; // 清空旧规则
+    ipRules.value = [];
+    forwardRules.value = [];
     
-    // 按顺序加载数据，确保避免竞态条件
+    // 1. 获取节点列表
+    console.log('【初始化】开始获取节点列表...');
+    const nodeListResult = await fetchNodeListApi(); // Use the correct API function
     
-    // 1. 先获取节点列表
-    console.log('开始获取节点列表...');
-    const nodeListResult = await fetchNodeList();
-    
-    if (!nodeListResult.success || nodeList.value.length === 0) {
-      console.warn('未获取到节点列表或节点列表为空');
+    // Fix Linter Error: Access data directly, check if it's an array and not empty
+    if (nodeListResult.code !== 0 || !nodeListResult.data || !Array.isArray(nodeListResult.data) || nodeListResult.data.length === 0) {
+      console.warn('【初始化】未获取到节点列表或节点列表为空', nodeListResult);
       ElMessage({
         type: 'warning',
         message: '未获取到可用节点，部分功能将不可用'
       });
-      return;
+      // Reset node list even on failure
+      nodeList.value = []; 
+      recentNodes.value = []; // Also clear recent nodes if list fails
+      currentNodeId.value = '';
+      currentNodeName.value = '';
+      currentNodeIp.value = '';
+      loading.value = false; // Ensure loading is false before returning
+      return; 
     }
     
-    console.log(`获取到${nodeList.value.length}个节点`);
+    // 更新节点列表 (Fix Linter Error: data is the array)
+    // Define a minimal type inline if AgentNode is not exported or available
+    type LocalAgentNode = { nodeId?: string, nodeName?: string, nodeIp?: string }; 
+    nodeList.value = nodeListResult.data.map((node: LocalAgentNode) => ({
+      id: node.nodeId || '',
+      name: node.nodeName || '',
+      ip: node.nodeIp || ''
+    }));
+    console.log(`【初始化】获取到${nodeList.value.length}个节点`);
     
-    // 2. 加载最近访问节点
-    loadRecentNodes();
+    // 加载最近访问节点 (should be done after fetching full list)
+    loadRecentNodes(); 
     
-    // 3. 确定初始节点
+    // 2. 确定初始节点
     let initialNodeId = '';
-    
+    // ... (existing logic for determining initialNodeId) ...
     if (route.query.nodeId) {
       initialNodeId = route.query.nodeId as string;
-      console.log('从URL参数中获取节点ID:', initialNodeId);
-    } else if (recentNodes.value.length > 0) {
+      console.log('【初始化】从URL参数中获取节点ID:', initialNodeId);
+    } else if (recentNodes.value.length > 0 && nodeList.value.some(n => n.id === recentNodes.value[0].id)) {
+      // Ensure recent node still exists in the current list
       initialNodeId = recentNodes.value[0].id;
-      console.log('使用最近访问的节点ID:', initialNodeId);
+      console.log('【初始化】使用最近访问的节点ID:', initialNodeId);
     } else if (nodeList.value.length > 0) {
       initialNodeId = nodeList.value[0].id;
-      console.log('使用第一个节点ID:', initialNodeId);
+      console.log('【初始化】使用第一个节点ID:', initialNodeId);
     }
     
     if (!initialNodeId) {
-      console.warn('无法确定初始节点ID');
+      console.warn('【初始化】无法确定初始节点ID');
+      loading.value = false; // Ensure loading is false
       return;
     }
     
-    // 4. 设置当前节点
+    // 3. 设置当前节点
     const currentNode = nodeList.value.find(n => n.id === initialNodeId);
     if (!currentNode) {
-      console.warn('未找到对应节点:', initialNodeId);
-      return;
+      console.warn('【初始化】未找到对应节点:', initialNodeId);
+       // Try the first node if the initial ID wasn't found (e.g., from stale recent list)
+      if (nodeList.value.length > 0) {
+        initialNodeId = nodeList.value[0].id;
+        const firstNode = nodeList.value[0];
+        currentNodeId.value = firstNode.id;
+        currentNodeName.value = firstNode.name;
+        currentNodeIp.value = firstNode.ip;
+        console.log('【初始化】回退到使用第一个节点:', firstNode);
+        addToRecentNodes(firstNode.id); // Add the fallback node to recent list
+      } else {
+        loading.value = false; // Ensure loading is false
+        return;
+      }
+    } else {
+      currentNodeId.value = currentNode.id;
+      currentNodeName.value = currentNode.name;
+      currentNodeIp.value = currentNode.ip;
+      console.log('【初始化】已设置当前节点:', currentNode);
+      // 添加到最近访问
+      addToRecentNodes(currentNode.id); 
     }
+
+    // 4. 获取防火墙状态
+    console.log('【初始化】开始获取防火墙状态...');
+    const statusResult = await fetchFirewallStatusApi(currentNodeId.value); // Use current node ID
     
-    currentNodeId.value = currentNode.id;
-    currentNodeName.value = currentNode.name;
-    currentNodeIp.value = currentNode.ip;
-    
-    console.log('已设置当前节点:', currentNode);
-    
-    // 将节点添加到最近访问
-    addToRecentNodes(initialNodeId);
-    
-    // 5. 获取防火墙状态
-    console.log('开始获取防火墙状态...');
-    const statusResult = await fetchFirewallStatusApi(currentNodeId.value);
-    
-    if (statusResult.success && statusResult.data) {
+    if (statusResult.code === 0 && statusResult.data) {
+      // ... (existing logic for setting firewall status) ...
       firewallStatus.value = statusResult.data.status;
       firewallName.value = statusResult.data.name;
       firewallVersion.value = statusResult.data.version;
       
       const shouldDisablePing = statusResult.data.pingStatus === 'Disable';
-      console.log('Ping状态:', statusResult.data.pingStatus, '设置pingDisabled为:', shouldDisablePing);
+      console.log('【初始化】Ping状态:', statusResult.data.pingStatus, '设置pingDisabled为:', shouldDisablePing);
       pingDisabled.value = shouldDisablePing;
       
       maskShow.value = statusResult.data.status !== 'running';
-      console.log('防火墙状态:', firewallStatus.value, '设置maskShow为:', maskShow.value);
+      console.log('【初始化】防火墙状态:', firewallStatus.value, '设置maskShow为:', maskShow.value);
     } else {
-      console.warn('获取防火墙状态失败:', statusResult);
+      console.warn('【初始化】获取防火墙状态失败:', statusResult);
       ElMessage({
         type: 'warning',
         message: '获取防火墙状态失败，请刷新页面重试'
       });
+      // Don't return here, allow rules fetching attempt if needed
     }
     
-    // 6. 如果防火墙运行中，加载端口规则
+    // 5. 如果防火墙运行中，加载当前标签页的规则
     if (firewallStatus.value === 'running') {
-      console.log('防火墙运行中，开始加载端口规则...');
+      console.log('【初始化】防火墙运行中，开始加载规则...');
       try {
         if (activeTab.value === 'port') {
-          await fetchPortRulesByNodeId(initialNodeId);
+          await fetchPortRulesByNodeId(currentNodeId.value); // Use current node ID
         } else if (activeTab.value === 'ip') {
-          await fetchIpRulesByNodeId(initialNodeId);
+           await fetchIpRulesByNodeId(currentNodeId.value); // Use current node ID
         } else if (activeTab.value === 'forward') {
-          await fetchForwardRulesByNodeId(initialNodeId);
+           await fetchForwardRulesByNodeId(currentNodeId.value); // Use current node ID
         }
       } catch (dataError) {
-        console.error('加载规则数据失败:', dataError);
+        console.error('【初始化】加载规则数据失败:', dataError);
       }
+    } else {
+       console.log('【初始化】防火墙未运行，跳过加载规则');
+       // Clear rules if firewall is not running
+       portRules.value = [];
+       ipRules.value = [];
+       forwardRules.value = [];
     }
     
-    // 最后确保设置页面为准备好状态
-    console.log('初始化完成，设置页面为可见');
+    console.log('【初始化】初始化完成');
   } catch (error) {
-    console.error('组件初始化失败:', error);
+    console.error('【初始化】组件初始化失败:', error);
     ElMessage({
       type: 'error',
       message: '加载数据失败，请刷新页面重试'
     });
+    // Reset state on major failure
+    nodeList.value = [];
+    recentNodes.value = [];
+    currentNodeId.value = '';
+    currentNodeName.value = '';
+    currentNodeIp.value = '';
+    portRules.value = [];
+    ipRules.value = [];
+    forwardRules.value = [];
+    firewallStatus.value = 'not running';
+    maskShow.value = true;
+
   } finally {
     loading.value = false;
-    
-    // 使用nextTick确保DOM已更新
-    nextTick(() => {
-      pageReady.value = true;
-    });
+    console.log('【状态更新】初始化结束，loading=false');
   }
-};
-
-// 组件卸载函数，清理所有状态和副作用
-const cleanupComponent = () => {
-  console.log('【cleanupComponent】彻底清理防火墙组件状态和副作用');
-  // 清除定时器
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-  // 重置关键状态
-  loading.value = false;
-  isComponentActive.value = false;
-  pageReady.value = false;
-};
-
-// 新增：仅暂停副作用，不重置激活和页面状态
-const pauseComponent = () => {
-  console.log('【pauseComponent】暂停副作用但保留激活和页面状态');
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-  }
-  // 不重置 isComponentActive 和 pageReady
 };
 
 // 生命周期钩子调整
 onActivated(() => {
   console.log('【onActivated】防火墙组件被激活');
-  isComponentActive.value = true;
-  if (!pageReady.value) {
-    console.log('【onActivated】pageReady为false，重新初始化组件');
-    try {
-      initializeComponent();
-    } catch (err) {
-      console.error('onActivated初始化异常:', err);
-      ElMessage({ type: 'error', message: '页面激活时发生异常，请刷新重试' });
-    }
-  } else {
-    console.log('【onActivated】组件已初始化，直接显示');
-  }
+  // 根据 KeepAlive 状态决定是否需要刷新数据或恢复状态
+  // 当前 API 配置 keepAlive: false，此钩子理论上不执行或无需特殊处理
+  // 若未来启用 KeepAlive，在此处添加必要的状态恢复或数据刷新逻辑, e.g., restart refreshTimer if applicable
+  
+  // Example if KeepAlive were active and refresh is needed:
+  // if (currentNodeId.value) {
+  //   console.log('【onActivated】重新激活，刷新防火墙状态和当前标签页数据');
+  //   fetchFirewallStatus(); // Refresh status
+  //   refreshData(); // Refresh rules for the active tab
+  // }
 });
 
 onDeactivated(() => {
-  console.log('【onDeactivated】防火墙组件被停用，仅暂停副作用');
-  pauseComponent();
+  console.log('【onDeactivated】防火墙组件被停用');
+  // 清除定时器等副作用
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+    console.log('【onDeactivated】已清除 refreshTimer');
+  }
+  // 若未来启用 KeepAlive，在此处添加必要的暂停逻辑
 });
 
-// 保持 onUnmounted 彻底清理
 onUnmounted(() => {
   console.log('【onUnmounted】防火墙组件被卸载，彻底清理');
-  cleanupComponent();
+  
+  // 【新增】检查DOM清理状态
+  console.log('【DEBUG】防火墙组件DOM状态:', 
+    document.querySelector('.firewall-container') ? '组件DOM仍存在' : '组件DOM已移除');
+  
+  // 【新增】检查全局状态
+  console.log('【DEBUG】全局window对象上是否有组件相关状态:', 
+    Object.keys(window).filter(key => key.includes('firewall') || key.includes('agent')));
+  
+  // 确保清除所有定时器和副作用
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+    console.log('【onUnmounted】已清除 refreshTimer');
+  }
+  
+  // 其他可能的清理...
+  console.log('【DEBUG】组件卸载完成');
 });
 
-// 在onMounted中调用初始化函数
 onMounted(async () => {
-  console.log('防火墙组件被挂载');
-  if (isComponentActive.value) {
-    try {
-      await initializeComponent();
-    } catch (err) {
-      console.error('onMounted初始化异常:', err);
-      ElMessage({ type: 'error', message: '页面加载时发生异常，请刷新重试' });
-    }
+  console.log('【onMounted】防火墙组件被挂载');
+  // 添加会话存储标记，表示已访问防火墙页面
+  sessionStorage.setItem('visited_firewall', 'true');
+  console.log('【DEBUG】已设置防火墙访问标记');
+  
+  // 初始化组件数据
+  try {
+    await initializeComponent();
+    console.log('【DEBUG】防火墙组件初始化完成');
+  } catch (error) {
+    console.error('【ERROR】防火墙组件初始化失败:', error);
   }
+});
+
+onBeforeUnmount(() => {
+  console.log('【onBeforeUnmount】防火墙组件即将卸载');
+  // 可以在这里进行最终的清理，但 onUnmounted 通常更适合
 });
 </script>
 
 <template>
-  <!-- 只有在组件激活时才显示内容 -->
-  <div class="firewall-container" v-loading="loading" v-if="isComponentActive">
-    <!-- 在页面未准备好时显示加载占位符 -->
-    <div v-if="!pageReady" class="loading-placeholder">
-      <el-card class="mb-4" v-for="i in 3" :key="i">
-        <el-skeleton :rows="3" animated />
+  <!-- 
+    防火墙组件 - 简化状态管理，移除 pageReady 和 componentMounted 控制。
+    依赖 v-loading 显示加载状态。
+    如果 KeepAlive 实际生效，Vue 会处理状态保持。
+  -->
+  <div class="firewall-container" v-loading="loading">
+    <!-- 防火墙状态信息 -->
+    <div class="app-status mb-4">
+      <!-- ... (防火墙状态卡片内容不变) ... -->
+      <el-card>
+        <div class="flex w-full flex-col gap-4 md:flex-row">
+          <div class="flex flex-wrap gap-4">
+            <el-tag effect="dark" type="success" v-if="firewallName">{{ firewallName }}</el-tag>
+            <el-tag effect="dark" type="info" v-else>未知防火墙</el-tag>
+            
+            <el-tag round v-if="firewallStatus === 'running'" type="success">
+              运行中
+            </el-tag>
+            <el-tag round v-else-if="firewallStatus === 'not running'" type="info">
+              已停止
+            </el-tag>
+            <el-tag round v-else type="warning">
+              状态未知
+            </el-tag>
+            
+            <el-tag v-if="firewallVersion">版本: {{ firewallVersion }}</el-tag>
+            <el-tag v-else type="info">版本未知</el-tag>
+          </div>
+          <div class="mt-0.5">
+            <el-button type="primary" v-if="firewallStatus === 'running'" @click="operateFirewall('stop')" link>
+              停止
+            </el-button>
+            <el-button type="primary" v-if="firewallStatus === 'not running'" @click="operateFirewall('start')" link>
+              启动
+            </el-button>
+            <el-divider direction="vertical" />
+            <el-button type="primary" @click="operateFirewall('restart')" :disabled="firewallStatus !== 'running'" link>
+              重启
+            </el-button>
+            <el-divider direction="vertical" />
+            <el-button type="primary" @click="togglePing" :disabled="firewallStatus !== 'running'" link>
+              {{ pingDisabled ? '禁止Ping' : '允许Ping' }}
+              <el-tag size="small" type="success" v-if="!pingDisabled" class="ml-1">开启</el-tag>
+              <el-tag size="small" type="danger" v-else class="ml-1">关闭</el-tag>
+            </el-button>
+            <el-switch 
+              size="small" 
+              class="ml-2" 
+              v-model="pingDisabled" 
+              active-color="#ff4949" 
+              inactive-color="#13ce66"
+              @change="togglePing" 
+              @click.native.stop
+              :disabled="firewallStatus !== 'running'"
+            />
+          </div>
+        </div>
       </el-card>
     </div>
-    
-    <!-- 实际内容区域，只有在页面准备好后才显示 -->
-    <div v-show="pageReady">
-      <!-- 防火墙状态信息 -->
-      <div class="app-status mb-4">
-        <el-card>
-          <div class="flex w-full flex-col gap-4 md:flex-row">
-            <div class="flex flex-wrap gap-4">
-              <el-tag effect="dark" type="success" v-if="firewallName">{{ firewallName }}</el-tag>
-              <el-tag effect="dark" type="info" v-else>未知防火墙</el-tag>
-              
-              <el-tag round v-if="firewallStatus === 'running'" type="success">
-                运行中
-              </el-tag>
-              <el-tag round v-else-if="firewallStatus === 'not running'" type="info">
-                已停止
-              </el-tag>
-              <el-tag round v-else type="warning">
-                状态未知
-              </el-tag>
-              
-              <el-tag v-if="firewallVersion">版本: {{ firewallVersion }}</el-tag>
-              <el-tag v-else type="info">版本未知</el-tag>
-            </div>
-            <div class="mt-0.5">
-              <el-button type="primary" v-if="firewallStatus === 'running'" @click="operateFirewall('stop')" link>
-                停止
-              </el-button>
-              <el-button type="primary" v-if="firewallStatus === 'not running'" @click="operateFirewall('start')" link>
-                启动
-              </el-button>
-              <el-divider direction="vertical" />
-              <el-button type="primary" @click="operateFirewall('restart')" :disabled="firewallStatus !== 'running'" link>
-                重启
-              </el-button>
-              <el-divider direction="vertical" />
-              <el-button type="primary" @click="togglePing" :disabled="firewallStatus !== 'running'" link>
-                {{ pingDisabled ? '禁止Ping' : '允许Ping' }}
-                <el-tag size="small" type="success" v-if="!pingDisabled" class="ml-1">开启</el-tag>
-                <el-tag size="small" type="danger" v-else class="ml-1">关闭</el-tag>
-              </el-button>
-              <el-switch 
-                size="small" 
-                class="ml-2" 
-                v-model="pingDisabled" 
-                active-color="#ff4949" 
-                inactive-color="#13ce66"
-                @change="togglePing" 
-                @click.native.stop
-                :disabled="firewallStatus !== 'running'"
-              />
-            </div>
-          </div>
-        </el-card>
-      </div>
 
-      <!-- 节点信息和选择器 -->
-      <div class="node-info mb-4">
-        <el-card>
+    <!-- 节点信息和选择器 -->
+    <div class="node-info mb-4">
+      <!-- ... (节点信息卡片内容不变) ... -->
+       <el-card>
           <div class="flex justify-between items-center flex-wrap">
             <div class="flex items-center gap-4 flex-wrap mb-2 md:mb-0">
               <el-tag type="info" v-if="currentNodeId">节点ID: {{ currentNodeId }}</el-tag>
@@ -1804,7 +1862,7 @@ onMounted(async () => {
             <div style="width: 280px">
               <el-select 
                 v-model="currentNodeId" 
-                placeholder="搜索节点" 
+                placeholder="搜索或选择节点" 
                 style="width: 100%"
                 filterable
                 remote
@@ -1845,22 +1903,22 @@ onMounted(async () => {
                   </el-option>
                 </el-option-group>
                 
-                <el-option v-if="nodeList.length === 0" disabled value="">
+                <el-option v-if="nodeList.length === 0 && !remoteLoading" disabled value="">
                   <span style="color: #999">暂无可用节点</span>
                 </el-option>
               </el-select>
             </div>
           </div>
         </el-card>
-      </div>
+    </div>
 
-      <!-- 主内容区域，当防火墙未运行时添加遮罩 -->
-      <div :class="{ mask: firewallStatus !== 'running' }">
-        <!-- 选项卡导航 -->
-        <el-tabs v-model="activeTab" class="mb-4">
-          <el-tab-pane label="端口规则" name="port">
-            <!-- 端口规则内容 -->
-            <el-card class="mb-4">
+    <!-- 主内容区域，当防火墙未运行时添加遮罩 -->
+    <div :class="{ mask: firewallStatus !== 'running' }">
+      <!-- 选项卡导航 -->
+      <el-tabs v-model="activeTab" class="mb-4">
+        <el-tab-pane label="端口规则" name="port">
+          <!-- ... (端口规则卡片内容不变) ... -->
+           <el-card class="mb-4">
               <!-- 顶部提示 -->
               <el-alert type="info" :closable="false" class="mb-4">
                 <template #default>
@@ -2134,10 +2192,10 @@ onMounted(async () => {
                 />
               </div>
             </el-card>
-          </el-tab-pane>
-          <el-tab-pane label="端口转发" name="forward">
-            <!-- 端口转发内容 -->
-            <el-card class="mb-4">
+        </el-tab-pane>
+        <el-tab-pane label="端口转发" name="forward">
+          <!-- ... (端口转发卡片内容不变) ... -->
+           <el-card class="mb-4">
               <!-- 顶部提示 -->
               <el-alert type="info" :closable="false" class="mb-4">
                 <template #default>
@@ -2212,10 +2270,10 @@ onMounted(async () => {
                 />
               </div>
             </el-card>
-          </el-tab-pane>
-          <el-tab-pane label="IP规则" name="ip">
-            <!-- IP规则内容 -->
-            <el-card class="mb-4">
+        </el-tab-pane>
+        <el-tab-pane label="IP规则" name="ip">
+          <!-- ... (IP规则卡片内容不变) ... -->
+           <el-card class="mb-4">
               <!-- 顶部提示 -->
               <el-alert type="info" :closable="false" class="mb-4">
                 <template #default>
@@ -2303,25 +2361,26 @@ onMounted(async () => {
                 />
               </div>
             </el-card>
-          </el-tab-pane>
-        </el-tabs>
-        
-        <!-- 如果防火墙未运行，显示提示卡片 -->
-        <el-card v-if="firewallStatus !== 'running' && maskShow" class="mask-prompt mb-4">
-          <span>防火墙未启动</span>
-        </el-card>
-      </div>
+        </el-tab-pane>
+      </el-tabs>
+      
+      <!-- 如果防火墙未运行，显示提示卡片 -->
+      <el-card v-if="firewallStatus !== 'running' && maskShow" class="mask-prompt mb-4">
+        <span>防火墙未启动</span>
+      </el-card>
+    </div>
 
-      <!-- 端口规则创建弹框 -->
-      <el-drawer
-        v-model="portRuleDrawerVisible"
-        :title="formMode === 'create' ? '创建规则' : '编辑规则'"
-        size="500px"
-        :before-close="cancelPortRuleForm"
-        :show-close="false"
-        destroy-on-close
-      >
-        <template #header>
+    <!-- 端口规则创建弹框 -->
+    <el-drawer
+      v-model="portRuleDrawerVisible"
+      :title="formMode === 'create' ? '创建规则' : '编辑规则'"
+      size="500px"
+      :before-close="cancelPortRuleForm"
+      :show-close="false"
+      destroy-on-close
+    >
+      <!-- ... (抽屉内容不变) ... -->
+       <template #header>
           <div class="drawer-header">
             <el-icon @click="cancelPortRuleForm" class="drawer-back-icon"><ArrowLeft /></el-icon>
             <span class="drawer-title">{{ formMode === 'create' ? '创建规则' : '编辑规则' }}</span>
@@ -2423,8 +2482,7 @@ onMounted(async () => {
             <el-button type="primary" @click="submitPortRuleForm">确认</el-button>
           </div>
         </template>
-      </el-drawer>
-    </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -2697,5 +2755,16 @@ onMounted(async () => {
   height: 6px;
   border-radius: 50%;
   background-color: #fff;
+}
+
+/* 调试面板样式 */
+.debug-info {
+  font-family: monospace;
+  line-height: 1.5;
+  transition: opacity 0.3s;
+}
+
+.debug-info:hover {
+  opacity: 1 !important;
 }
 </style> 
