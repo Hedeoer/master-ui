@@ -70,6 +70,7 @@ declare global {
   const effectScope: typeof import('vue')['effectScope']
   const existenceUserApi: typeof import('./api/system/user')['existenceUserApi']
   const extendRef: typeof import('@vueuse/core')['extendRef']
+  const fetchFirewallStatusApi: typeof import('./api/agents/firewall')['fetchFirewallStatusApi']
   const fetchNodeListApi: typeof import('./api/agents/firewall')['fetchNodeListApi']
   const fetchPortRulesByNodeId: typeof import('./api/agents/firewall')['fetchPortRulesByNodeId']
   const getActivePinia: typeof import('pinia')['getActivePinia']
@@ -142,6 +143,7 @@ declare global {
   const onUnmounted: typeof import('vue')['onUnmounted']
   const onUpdated: typeof import('vue')['onUpdated']
   const onWatcherCleanup: typeof import('vue')['onWatcherCleanup']
+  const operateFirewallApi: typeof import('./api/agents/firewall')['operateFirewallApi']
   const operateNodeApi: typeof import('./api/agents/node')['operateNodeApi']
   const pageDictApi: typeof import('./api/system/dict')['pageDictApi']
   const pageDictItemApi: typeof import('./api/system/dictItem')['pageDictItemApi']
@@ -186,6 +188,7 @@ declare global {
   const runOnceJobApi: typeof import('./api/job/job')['runOnceJobApi']
   const setActivePinia: typeof import('pinia')['setActivePinia']
   const setMapStoreSuffix: typeof import('pinia')['setMapStoreSuffix']
+  const setPingStatusApi: typeof import('./api/agents/firewall')['setPingStatusApi']
   const setupStore: typeof import('./store/index')['setupStore']
   const shallowReactive: typeof import('vue')['shallowReactive']
   const shallowReadonly: typeof import('vue')['shallowReadonly']
@@ -428,7 +431,7 @@ declare global {
   export type { Component, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
-  export type { PortRule, PortRuleSubmitParams } from './api/agents/firewall'
+  export type { PortRule, FirewallStatus, PortRuleSubmitParams } from './api/agents/firewall'
   import('./api/agents/firewall')
   // @ts-ignore
   export type { LottieParams } from './hooks/lottie'
@@ -503,6 +506,7 @@ declare module 'vue' {
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly existenceUserApi: UnwrapRef<typeof import('./api/system/user')['existenceUserApi']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
+    readonly fetchFirewallStatusApi: UnwrapRef<typeof import('./api/agents/firewall')['fetchFirewallStatusApi']>
     readonly fetchNodeListApi: UnwrapRef<typeof import('./api/agents/firewall')['fetchNodeListApi']>
     readonly fetchPortRulesByNodeId: UnwrapRef<typeof import('./api/agents/firewall')['fetchPortRulesByNodeId']>
     readonly getActivePinia: UnwrapRef<typeof import('pinia')['getActivePinia']>
@@ -575,6 +579,7 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly operateFirewallApi: UnwrapRef<typeof import('./api/agents/firewall')['operateFirewallApi']>
     readonly operateNodeApi: UnwrapRef<typeof import('./api/agents/node')['operateNodeApi']>
     readonly pageDictApi: UnwrapRef<typeof import('./api/system/dict')['pageDictApi']>
     readonly pageDictItemApi: UnwrapRef<typeof import('./api/system/dictItem')['pageDictItemApi']>
@@ -619,6 +624,7 @@ declare module 'vue' {
     readonly runOnceJobApi: UnwrapRef<typeof import('./api/job/job')['runOnceJobApi']>
     readonly setActivePinia: UnwrapRef<typeof import('pinia')['setActivePinia']>
     readonly setMapStoreSuffix: UnwrapRef<typeof import('pinia')['setMapStoreSuffix']>
+    readonly setPingStatusApi: UnwrapRef<typeof import('./api/agents/firewall')['setPingStatusApi']>
     readonly setupStore: UnwrapRef<typeof import('./store/index')['setupStore']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>

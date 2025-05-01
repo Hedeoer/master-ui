@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch, onUnmounted, nextTick } from 'vue';
+import { ref, reactive, onMounted, computed, watch, onUnmounted, nextTick, onActivated, onDeactivated } from 'vue';
 import {
   ElCard,
   ElTabs,
@@ -86,19 +86,42 @@ const fetchFirewallStatus = async () => {
         message: '请先选择一个节点'
       });
       loading.value = false;
-      return;
+      return { success: false, message: '未选择节点' };
     }
     
-    const { success, data } = await fetchFirewallStatusApi(currentNodeId.value);
-    
-    if (success && data) {
-      firewallStatus.value = data.status;
-      firewallName.value = data.name;
-      firewallVersion.value = data.version;
-      pingDisabled.value = data.pingStatus === 'Disable';
+    // 通过API获取防火墙状态
+    try {
+      const result = await fetchFirewallStatusApi(currentNodeId.value);
       
-      // 更新遮罩显示状态
-      maskShow.value = data.status !== 'running';
+      if (result.success && result.data) {
+        firewallStatus.value = result.data.status;
+        firewallName.value = result.data.name;
+        firewallVersion.value = result.data.version;
+        
+        // 打印日志，便于排错
+        console.log('获取到防火墙状态:', result.data);
+        console.log('Ping响应状态:', result.data.pingStatus);
+        
+        // 确保pingDisabled值正确设置
+        const shouldDisablePing = result.data.pingStatus === 'Disable';
+        console.log('设置pingDisabled为:', shouldDisablePing);
+        pingDisabled.value = shouldDisablePing;
+        
+        // 更新遮罩显示状态
+        maskShow.value = result.data.status !== 'running';
+        
+        return result;
+      } else {
+        console.error('获取防火墙状态失败: 请求成功但数据无效');
+        return { success: false, message: '获取数据失败' };
+      }
+    } catch (apiError) {
+      console.error('API调用失败:', apiError);
+      ElMessage({
+        type: 'warning',
+        message: '获取防火墙状态信息失败'
+      });
+      return { success: false, message: (apiError as Error).message };
     }
   } catch (error) {
     console.error('获取防火墙状态失败:', error);
@@ -106,6 +129,7 @@ const fetchFirewallStatus = async () => {
       type: 'warning',
       message: '获取防火墙状态信息失败'
     });
+    return { success: false, message: (error as Error).message };
   } finally {
     loading.value = false;
   }
@@ -705,7 +729,16 @@ const operateFirewall = async (operation: 'start' | 'stop' | 'restart') => {
   }
 };
 
+// 添加防抖标志
+const pingTogglePending = ref(false);
+
 const togglePing = async () => {
+  // 如果已经有一个请求在进行中，直接返回
+  if (pingTogglePending.value) {
+    console.log('已有Ping状态切换请求进行中，请稍后再试');
+    return;
+  }
+
   // 如果未选择节点，无法设置Ping响应状态
   if (!currentNodeId.value) {
     ElMessage({
@@ -715,20 +748,36 @@ const togglePing = async () => {
     return;
   }
   
-  const newStatus = !pingDisabled.value;
-  pingDisabled.value = newStatus; // 先更新UI状态
+  // 设置防抖标志
+  pingTogglePending.value = true;
+  
+  // 新状态是当前值的反转
+  const newDisabledStatus = !pingDisabled.value;
+  // 记录原始状态，用于在失败时恢复
+  const originalStatus = pingDisabled.value;
+  // 先更新UI状态
+  pingDisabled.value = newDisabledStatus;
+  
+  // debug打印，便于排错
+  console.log('切换Ping状态: 原值=', originalStatus, '新值=', newDisabledStatus);
+  console.log('将发送API参数: pingStatus=', newDisabledStatus ? 'Disable' : 'Enable');
   
   try {
-    const { success, message } = await setPingStatusApi(currentNodeId.value, newStatus ? 'Disable' : 'Enable');
+    // 注意: pingDisabled为true时，发送'Disable'参数
+    //      pingDisabled为false时，发送'Enable'参数
+    const { success, message } = await setPingStatusApi(
+      currentNodeId.value, 
+      newDisabledStatus ? 'Disable' : 'Enable'
+    );
     
     if (success) {
       ElMessage({
         type: 'success',
-        message: newStatus ? '已禁止Ping响应' : '已允许Ping响应'
+        message: newDisabledStatus ? '已禁止Ping响应' : '已允许Ping响应'
       });
     } else {
       // 如果操作失败，恢复原状态
-      pingDisabled.value = !newStatus;
+      pingDisabled.value = originalStatus;
       ElMessage({
         type: 'error',
         message: message || '设置Ping响应状态失败'
@@ -736,12 +785,15 @@ const togglePing = async () => {
     }
   } catch (error) {
     // 如果操作失败，恢复原状态
-    pingDisabled.value = !newStatus;
+    pingDisabled.value = originalStatus;
     console.error('设置Ping响应状态失败:', error);
     ElMessage({
       type: 'error',
       message: '设置Ping响应状态失败'
     });
+  } finally {
+    // 无论成功还是失败，最后都要重置防抖标志
+    pingTogglePending.value = false;
   }
 };
 
@@ -1474,119 +1526,315 @@ watch(activeTab, (newTab) => {
   }
 });
 
-// 修改初始化
-onMounted(async () => {
-  // 先设置加载状态
-  loading.value = true;
-  
+// 在script部分定义新的状态变量来控制整体页面显示
+const pageReady = ref(false); // 页面是否准备好显示的状态
+const isComponentActive = ref(true); // 组件当前是否激活
+
+// 初始化数据和视图同步
+const initializeComponent = async () => {
   try {
-    // 1. 获取节点列表
-    await fetchNodeList();
+    // 显示加载状态
+    loading.value = true;
+    pageReady.value = false;
     
-    // 2. 加载最近访问的节点
+    // 预设默认值
+    firewallStatus.value = 'not running';
+    firewallName.value = 'FirewallD';
+    firewallVersion.value = '—';
+    pingDisabled.value = true;
+    maskShow.value = true;
+    
+    // 按顺序加载数据，确保避免竞态条件
+    
+    // 1. 先获取节点列表
+    console.log('开始获取节点列表...');
+    const nodeListResult = await fetchNodeList();
+    
+    if (!nodeListResult.success || nodeList.value.length === 0) {
+      console.warn('未获取到节点列表或节点列表为空');
+      ElMessage({
+        type: 'warning',
+        message: '未获取到可用节点，部分功能将不可用'
+      });
+      return;
+    }
+    
+    console.log(`获取到${nodeList.value.length}个节点`);
+    
+    // 2. 加载最近访问节点
     loadRecentNodes();
     
-    // 3. 确定初始节点ID
+    // 3. 确定初始节点
     let initialNodeId = '';
     
-    // 检查URL参数中是否有nodeId
     if (route.query.nodeId) {
       initialNodeId = route.query.nodeId as string;
+      console.log('从URL参数中获取节点ID:', initialNodeId);
     } else if (recentNodes.value.length > 0) {
-      // 如果有最近访问的节点，使用第一个
       initialNodeId = recentNodes.value[0].id;
+      console.log('使用最近访问的节点ID:', initialNodeId);
     } else if (nodeList.value.length > 0) {
-      // 如果没有，则使用第一个节点
       initialNodeId = nodeList.value[0].id;
+      console.log('使用第一个节点ID:', initialNodeId);
     }
     
-    // 4. 如果有可用节点，先设置当前节点，然后获取防火墙状态
-    if (initialNodeId) {
-      // 设置当前节点
-      setCurrentNode(initialNodeId);
+    if (!initialNodeId) {
+      console.warn('无法确定初始节点ID');
+      return;
+    }
+    
+    // 4. 设置当前节点
+    const currentNode = nodeList.value.find(n => n.id === initialNodeId);
+    if (!currentNode) {
+      console.warn('未找到对应节点:', initialNodeId);
+      return;
+    }
+    
+    currentNodeId.value = currentNode.id;
+    currentNodeName.value = currentNode.name;
+    currentNodeIp.value = currentNode.ip;
+    
+    console.log('已设置当前节点:', currentNode);
+    
+    // 将节点添加到最近访问
+    addToRecentNodes(initialNodeId);
+    
+    // 5. 获取防火墙状态
+    console.log('开始获取防火墙状态...');
+    const statusResult = await fetchFirewallStatusApi(currentNodeId.value);
+    
+    if (statusResult.success && statusResult.data) {
+      firewallStatus.value = statusResult.data.status;
+      firewallName.value = statusResult.data.name;
+      firewallVersion.value = statusResult.data.version;
       
-      // 获取防火墙状态信息
-      await fetchFirewallStatus();
+      const shouldDisablePing = statusResult.data.pingStatus === 'Disable';
+      console.log('Ping状态:', statusResult.data.pingStatus, '设置pingDisabled为:', shouldDisablePing);
+      pingDisabled.value = shouldDisablePing;
       
-      // 如果防火墙正在运行，加载节点数据
-      if (firewallStatus.value === 'running') {
-        await loadNodeData(initialNodeId);
+      maskShow.value = statusResult.data.status !== 'running';
+      console.log('防火墙状态:', firewallStatus.value, '设置maskShow为:', maskShow.value);
+    } else {
+      console.warn('获取防火墙状态失败:', statusResult);
+      ElMessage({
+        type: 'warning',
+        message: '获取防火墙状态失败，请刷新页面重试'
+      });
+    }
+    
+    // 6. 如果防火墙运行中，加载端口规则
+    if (firewallStatus.value === 'running') {
+      console.log('防火墙运行中，开始加载端口规则...');
+      try {
+        if (activeTab.value === 'port') {
+          await fetchPortRulesByNodeId(initialNodeId);
+        } else if (activeTab.value === 'ip') {
+          await fetchIpRulesByNodeId(initialNodeId);
+        } else if (activeTab.value === 'forward') {
+          await fetchForwardRulesByNodeId(initialNodeId);
+        }
+      } catch (dataError) {
+        console.error('加载规则数据失败:', dataError);
       }
     }
+    
+    // 最后确保设置页面为准备好状态
+    console.log('初始化完成，设置页面为可见');
   } catch (error) {
-    console.error('初始化失败:', error);
+    console.error('组件初始化失败:', error);
     ElMessage({
       type: 'error',
       message: '加载数据失败，请刷新页面重试'
     });
   } finally {
     loading.value = false;
+    
+    // 使用nextTick确保DOM已更新
+    nextTick(() => {
+      pageReady.value = true;
+    });
+  }
+};
+
+// 组件卸载函数，清理所有状态和副作用
+const cleanupComponent = () => {
+  console.log('【cleanupComponent】彻底清理防火墙组件状态和副作用');
+  // 清除定时器
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  // 重置关键状态
+  loading.value = false;
+  isComponentActive.value = false;
+  pageReady.value = false;
+};
+
+// 新增：仅暂停副作用，不重置激活和页面状态
+const pauseComponent = () => {
+  console.log('【pauseComponent】暂停副作用但保留激活和页面状态');
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+    refreshTimer = null;
+  }
+  // 不重置 isComponentActive 和 pageReady
+};
+
+// 生命周期钩子调整
+onActivated(() => {
+  console.log('【onActivated】防火墙组件被激活');
+  isComponentActive.value = true;
+  if (!pageReady.value) {
+    console.log('【onActivated】pageReady为false，重新初始化组件');
+    try {
+      initializeComponent();
+    } catch (err) {
+      console.error('onActivated初始化异常:', err);
+      ElMessage({ type: 'error', message: '页面激活时发生异常，请刷新重试' });
+    }
+  } else {
+    console.log('【onActivated】组件已初始化，直接显示');
+  }
+});
+
+onDeactivated(() => {
+  console.log('【onDeactivated】防火墙组件被停用，仅暂停副作用');
+  pauseComponent();
+});
+
+// 保持 onUnmounted 彻底清理
+onUnmounted(() => {
+  console.log('【onUnmounted】防火墙组件被卸载，彻底清理');
+  cleanupComponent();
+});
+
+// 在onMounted中调用初始化函数
+onMounted(async () => {
+  console.log('防火墙组件被挂载');
+  if (isComponentActive.value) {
+    try {
+      await initializeComponent();
+    } catch (err) {
+      console.error('onMounted初始化异常:', err);
+      ElMessage({ type: 'error', message: '页面加载时发生异常，请刷新重试' });
+    }
   }
 });
 </script>
 
 <template>
-  <div class="firewall-container" v-loading="loading">
-    <!-- 防火墙状态信息 -->
-    <div class="app-status mb-4">
-      <el-card>
-        <div class="flex w-full flex-col gap-4 md:flex-row">
-          <div class="flex flex-wrap gap-4">
-            <el-tag effect="dark" type="success">{{ firewallName }}</el-tag>
-            <el-tag round v-if="firewallStatus === 'running'" type="success">
-              运行中
-            </el-tag>
-            <el-tag round v-if="firewallStatus === 'not running'" type="info">
-              已停止
-            </el-tag>
-            <el-tag>版本: {{ firewallVersion }}</el-tag>
-          </div>
-          <div class="mt-0.5">
-            <el-button type="primary" v-if="firewallStatus === 'running'" @click="operateFirewall('stop')" link>
-              停止
-            </el-button>
-            <el-button type="primary" v-if="firewallStatus === 'not running'" @click="operateFirewall('start')" link>
-              启动
-            </el-button>
-            <el-divider direction="vertical" />
-            <el-button type="primary" @click="operateFirewall('restart')" link>
-              重启
-            </el-button>
-            <el-divider direction="vertical" />
-            <el-button type="primary" link>禁止Ping</el-button>
-            <el-switch size="small" class="ml-2" v-model="pingDisabled" @change="togglePing" />
-          </div>
-        </div>
+  <!-- 只有在组件激活时才显示内容 -->
+  <div class="firewall-container" v-loading="loading" v-if="isComponentActive">
+    <!-- 在页面未准备好时显示加载占位符 -->
+    <div v-if="!pageReady" class="loading-placeholder">
+      <el-card class="mb-4" v-for="i in 3" :key="i">
+        <el-skeleton :rows="3" animated />
       </el-card>
     </div>
-
-    <!-- 节点信息和选择器 -->
-    <div class="node-info mb-4">
-      <el-card>
-        <div class="flex justify-between items-center">
-          <div class="flex items-center gap-4">
-            <el-tag type="info">节点ID: {{ currentNodeId }}</el-tag>
-            <el-tag type="info">主机名: {{ currentNodeName }}</el-tag>
-            <el-tag type="info">IP地址: {{ currentNodeIp }}</el-tag>
+    
+    <!-- 实际内容区域，只有在页面准备好后才显示 -->
+    <div v-show="pageReady">
+      <!-- 防火墙状态信息 -->
+      <div class="app-status mb-4">
+        <el-card>
+          <div class="flex w-full flex-col gap-4 md:flex-row">
+            <div class="flex flex-wrap gap-4">
+              <el-tag effect="dark" type="success" v-if="firewallName">{{ firewallName }}</el-tag>
+              <el-tag effect="dark" type="info" v-else>未知防火墙</el-tag>
+              
+              <el-tag round v-if="firewallStatus === 'running'" type="success">
+                运行中
+              </el-tag>
+              <el-tag round v-else-if="firewallStatus === 'not running'" type="info">
+                已停止
+              </el-tag>
+              <el-tag round v-else type="warning">
+                状态未知
+              </el-tag>
+              
+              <el-tag v-if="firewallVersion">版本: {{ firewallVersion }}</el-tag>
+              <el-tag v-else type="info">版本未知</el-tag>
+            </div>
+            <div class="mt-0.5">
+              <el-button type="primary" v-if="firewallStatus === 'running'" @click="operateFirewall('stop')" link>
+                停止
+              </el-button>
+              <el-button type="primary" v-if="firewallStatus === 'not running'" @click="operateFirewall('start')" link>
+                启动
+              </el-button>
+              <el-divider direction="vertical" />
+              <el-button type="primary" @click="operateFirewall('restart')" :disabled="firewallStatus !== 'running'" link>
+                重启
+              </el-button>
+              <el-divider direction="vertical" />
+              <el-button type="primary" @click="togglePing" :disabled="firewallStatus !== 'running'" link>
+                {{ pingDisabled ? '禁止Ping' : '允许Ping' }}
+                <el-tag size="small" type="success" v-if="!pingDisabled" class="ml-1">开启</el-tag>
+                <el-tag size="small" type="danger" v-else class="ml-1">关闭</el-tag>
+              </el-button>
+              <el-switch 
+                size="small" 
+                class="ml-2" 
+                v-model="pingDisabled" 
+                active-color="#ff4949" 
+                inactive-color="#13ce66"
+                @change="togglePing" 
+                @click.native.stop
+                :disabled="firewallStatus !== 'running'"
+              />
+            </div>
           </div>
-          <div style="width: 280px">
-            <el-select 
-              v-model="currentNodeId" 
-              placeholder="搜索节点" 
-              style="width: 100%"
-              filterable
-              remote
-              reserve-keyword
-              :remote-method="remoteSearchNodes"
-              :loading="remoteLoading"
-              @change="loadNodeData"
-              clearable
-            >
-              <template v-if="recentNodes.length > 0">
-                <el-option-group label="最近访问">
+        </el-card>
+      </div>
+
+      <!-- 节点信息和选择器 -->
+      <div class="node-info mb-4">
+        <el-card>
+          <div class="flex justify-between items-center flex-wrap">
+            <div class="flex items-center gap-4 flex-wrap mb-2 md:mb-0">
+              <el-tag type="info" v-if="currentNodeId">节点ID: {{ currentNodeId }}</el-tag>
+              <el-tag type="info" v-else>未选择节点</el-tag>
+              
+              <el-tag type="info" v-if="currentNodeName">主机名: {{ currentNodeName }}</el-tag>
+              <el-tag type="info" v-else>—</el-tag>
+              
+              <el-tag type="info" v-if="currentNodeIp">IP地址: {{ currentNodeIp }}</el-tag>
+              <el-tag type="info" v-else>—</el-tag>
+            </div>
+            <div style="width: 280px">
+              <el-select 
+                v-model="currentNodeId" 
+                placeholder="搜索节点" 
+                style="width: 100%"
+                filterable
+                remote
+                reserve-keyword
+                :remote-method="remoteSearchNodes"
+                :loading="remoteLoading"
+                @change="loadNodeData"
+                clearable
+              >
+                <template v-if="recentNodes.length > 0">
+                  <el-option-group label="最近访问">
+                    <el-option
+                      v-for="node in recentNodes"
+                      :key="`recent-${node.id}`"
+                      :label="`${node.name} (${node.ip})`"
+                      :value="node.id"
+                    >
+                      <div class="flex items-center justify-between">
+                        <span>{{ node.name }}</span>
+                        <el-tag size="small" type="info">{{ node.ip }}</el-tag>
+                      </div>
+                    </el-option>
+                  </el-option-group>
+                  <el-divider style="margin: 5px 0" />
+                </template>
+                
+                <el-option-group label="所有节点" v-if="nodeList.length > 0">
                   <el-option
-                    v-for="node in recentNodes"
-                    :key="`recent-${node.id}`"
+                    v-for="node in filteredNodeList"
+                    :key="node.id"
                     :label="`${node.name} (${node.ip})`"
                     :value="node.id"
                   >
@@ -1596,242 +1844,150 @@ onMounted(async () => {
                     </div>
                   </el-option>
                 </el-option-group>
-                <el-divider style="margin: 5px 0" />
-              </template>
-              
-              <el-option-group label="所有节点">
-                <el-option
-                  v-for="node in filteredNodeList"
-                  :key="node.id"
-                  :label="`${node.name} (${node.ip})`"
-                  :value="node.id"
-                >
-                  <div class="flex items-center justify-between">
-                    <span>{{ node.name }}</span>
-                    <el-tag size="small" type="info">{{ node.ip }}</el-tag>
-                  </div>
+                
+                <el-option v-if="nodeList.length === 0" disabled value="">
+                  <span style="color: #999">暂无可用节点</span>
                 </el-option>
-              </el-option-group>
-            </el-select>
+              </el-select>
+            </div>
           </div>
-        </div>
-      </el-card>
-    </div>
+        </el-card>
+      </div>
 
-    <!-- 主内容区域，当防火墙未运行时添加遮罩 -->
-    <div :class="{ mask: firewallStatus !== 'running' }">
-      <!-- 选项卡导航 -->
-      <el-tabs v-model="activeTab" class="mb-4">
-        <el-tab-pane label="端口规则" name="port">
-          <!-- 端口规则内容 -->
-          <el-card class="mb-4">
-            <!-- 顶部提示 -->
-            <el-alert type="info" :closable="false" class="mb-4">
-              <template #default>
-                <span class="flx-align-center">
-                  <span>防火墙端口规则管理, 用于控制入站/出站流量</span>
-                  <el-link style="font-size: 12px; margin-left: 5px" :icon="Position" type="primary">
-                    查看文档
-                  </el-link>
-                </span>
-              </template>
-            </el-alert>
+      <!-- 主内容区域，当防火墙未运行时添加遮罩 -->
+      <div :class="{ mask: firewallStatus !== 'running' }">
+        <!-- 选项卡导航 -->
+        <el-tabs v-model="activeTab" class="mb-4">
+          <el-tab-pane label="端口规则" name="port">
+            <!-- 端口规则内容 -->
+            <el-card class="mb-4">
+              <!-- 顶部提示 -->
+              <el-alert type="info" :closable="false" class="mb-4">
+                <template #default>
+                  <span class="flx-align-center">
+                    <span>防火墙端口规则管理, 用于控制入站/出站流量</span>
+                    <el-link style="font-size: 12px; margin-left: 5px" :icon="Position" type="primary">
+                      查看文档
+                    </el-link>
+                  </span>
+                </template>
+              </el-alert>
 
-            <!-- 搜索过滤区 -->
-            <div class="flx-align-center mb-4">
-              <el-select v-model="portSearchZone" @change="applyPortFilter" clearable class="p-w-150">
-                <template #prefix>区域</template>
-                <el-option label="全部" value=""></el-option>
-                <el-option label="公共" value="public"></el-option>
-                <el-option label="私有" value="private"></el-option>
-                <el-option label="内部" value="internal"></el-option>
-                <el-option label="DMZ" value="dmz"></el-option>
-              </el-select>
-              <el-select v-model="portSearchFamily" @change="applyPortFilter" clearable class="p-w-150 ml-2">
-                <template #prefix>IP类型</template>
-                <el-option label="全部" value=""></el-option>
-                <el-option label="IPv4" value="ipv4"></el-option>
-                <el-option label="IPv6" value="ipv6"></el-option>
-                <el-option label="IPv4/IPv6" value="both"></el-option>
-              </el-select>
-              <el-select v-model="portSearchStatus" @change="applyPortFilter" clearable class="p-w-150 ml-2">
-                <template #prefix>状态</template>
-                <el-option label="全部" value=""></el-option>
-                <el-option label="未使用" value="notUsed"></el-option>
-                <el-option label="已使用" value="used"></el-option>
-              </el-select>
-              <el-select v-model="portSearchStrategy" @change="applyPortFilter" clearable class="p-w-150 ml-2">
-                <template #prefix>策略</template>
-                <el-option label="全部" value=""></el-option>
-                <el-option label="允许" value="accept"></el-option>
-                <el-option label="拒绝" value="drop"></el-option>
-              </el-select>
-              <el-input
-                v-model="portSearchQuery"
-                @input="applyPortFilter"
-                placeholder="搜索端口、协议、描述..."
-                class="p-w-200 ml-2"
-                clearable
+              <!-- 搜索过滤区 -->
+              <div class="flx-align-center mb-4">
+                <el-select v-model="portSearchZone" @change="applyPortFilter" clearable class="p-w-150">
+                  <template #prefix>区域</template>
+                  <el-option label="全部" value=""></el-option>
+                  <el-option label="公共" value="public"></el-option>
+                  <el-option label="私有" value="private"></el-option>
+                  <el-option label="内部" value="internal"></el-option>
+                  <el-option label="DMZ" value="dmz"></el-option>
+                </el-select>
+                <el-select v-model="portSearchFamily" @change="applyPortFilter" clearable class="p-w-150 ml-2">
+                  <template #prefix>IP类型</template>
+                  <el-option label="全部" value=""></el-option>
+                  <el-option label="IPv4" value="ipv4"></el-option>
+                  <el-option label="IPv6" value="ipv6"></el-option>
+                  <el-option label="IPv4/IPv6" value="both"></el-option>
+                </el-select>
+                <el-select v-model="portSearchStatus" @change="applyPortFilter" clearable class="p-w-150 ml-2">
+                  <template #prefix>状态</template>
+                  <el-option label="全部" value=""></el-option>
+                  <el-option label="未使用" value="notUsed"></el-option>
+                  <el-option label="已使用" value="used"></el-option>
+                </el-select>
+                <el-select v-model="portSearchStrategy" @change="applyPortFilter" clearable class="p-w-150 ml-2">
+                  <template #prefix>策略</template>
+                  <el-option label="全部" value=""></el-option>
+                  <el-option label="允许" value="accept"></el-option>
+                  <el-option label="拒绝" value="drop"></el-option>
+                </el-select>
+                <el-input
+                  v-model="portSearchQuery"
+                  @input="applyPortFilter"
+                  placeholder="搜索端口、协议、描述..."
+                  class="p-w-200 ml-2"
+                  clearable
+                >
+                  <template #prefix>
+                    <el-icon><Search /></el-icon>
+                  </template>
+                </el-input>
+              </div>
+
+              <!-- 工具栏 -->
+              <div class="flex justify-between gap-2 flex-wrap sm:flex-row mb-4">
+                <div class="flex flex-wrap gap-3">
+                  <el-button type="primary" :icon="Plus" @click="createPortRule">
+                    创建端口规则
+                  </el-button>
+                  <el-button :disabled="selectedPortRows.length === 0" :icon="Delete" plain @click="deletePortRule(null)">
+                    删除
+                  </el-button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                  <TableSetting v-model:refreshRate="refreshRate" />
+                </div>
+              </div>
+
+              <!-- 表格 -->
+              <el-table
+                :data="paginatedPortRules"
+                @selection-change="(val) => selectedPortRows = val"
+                border
+                style="width: 100%"
               >
-                <template #prefix>
-                  <el-icon><Search /></el-icon>
-                </template>
-              </el-input>
-            </div>
-
-            <!-- 工具栏 -->
-            <div class="flex justify-between gap-2 flex-wrap sm:flex-row mb-4">
-              <div class="flex flex-wrap gap-3">
-                <el-button type="primary" :icon="Plus" @click="createPortRule">
-                  创建端口规则
-                </el-button>
-                <el-button :disabled="selectedPortRows.length === 0" :icon="Delete" plain @click="deletePortRule(null)">
-                  删除
-                </el-button>
-              </div>
-              <div class="flex flex-wrap gap-3">
-                <TableSetting v-model:refreshRate="refreshRate" />
-              </div>
-            </div>
-
-            <!-- 表格 -->
-            <el-table
-              :data="paginatedPortRules"
-              @selection-change="(val) => selectedPortRows = val"
-              border
-              style="width: 100%"
-            >
-              <el-table-column type="selection" width="55" />
-              <el-table-column label="区域" prop="zone" width="100">
-                <template #default="{ row }">
-                  <el-tag effect="plain">{{ row.zone }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="IP类型" prop="family" width="100">
-                <template #default="{ row }">
-                  <el-tag type="info" v-if="row.family === 'ipv4'">IPv4</el-tag>
-                  <el-tag type="success" v-else-if="row.family === 'ipv6'">IPv6</el-tag>
-                  <el-tag type="warning" v-else-if="row.family === 'both'">IPv4/IPv6</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="协议" prop="protocol" width="100" />
-              <el-table-column label="端口" prop="port" width="120" />
-              <el-table-column label="状态" width="150">
-                <template #default="{ row }">
-                  <!-- 单个端口且正在使用 -->
-                  <div v-if="!row.port.includes('-') && !row.port.includes(',') && row.usedStatus === 'inUsed'">
-                    <el-tag type="info">
-                      已使用: {{ row.portUsageDetails?.[0]?.processName || 'Unknown' }}
-                    </el-tag>
-                    <el-popover placement="right" :width="300" trigger="hover" v-if="row.portUsageDetails?.length">
-                      <template #default>
-                        <div class="port-detail-card">
-                          <div class="port-detail-title">端口使用详情</div>
-                          <div class="port-detail-item">
-                            <span class="port-detail-label">端口:</span>
-                            <span class="port-detail-value">{{ row.port }}</span>
-                          </div>
-                          <div class="port-detail-item">
-                          <span class="port-detail-label">协议:</span>
-                          <span class="port-detail-value">
-                            {{ row.portUsageDetails[0].protocol ? row.portUsageDetails[0].protocol.toUpperCase() : '' }}
-                          </span>
-                          </div>                        
-                          <div class="port-detail-item">
-                            <span class="port-detail-label">进程:</span>
-                            <span class="port-detail-value">{{ row.portUsageDetails[0].processName }}</span>
-                          </div>
-                          <div class="port-detail-item" v-if="row.portUsageDetails[0].processId">
-                            <span class="port-detail-label">PID:</span>
-                            <span class="port-detail-value">{{ row.portUsageDetails[0].processId }}</span>
-                          </div>
-                          <div class="port-detail-item" v-if="row.portUsageDetails[0].listenAddress">
-                            <span class="port-detail-label">监听地址:</span>
-                            <span class="port-detail-value">{{ row.portUsageDetails[0].listenAddress }}</span>
-                          </div>
-                          <div class="port-detail-item" v-if="row.portUsageDetails[0].commandLine">
-                            <span class="port-detail-label">命令行:</span>
-                            <span class="port-detail-value command-line">{{ row.portUsageDetails[0].commandLine }}</span>
-                          </div>
-                        </div>
-                      </template>
-                      <template #reference>
-                        <el-icon class="info-icon"><InfoFilled /></el-icon>
-                      </template>
-                    </el-popover>
-                  </div>
-                  
-                  <!-- 区间端口或多个端口 -->
-                  <div v-else-if="row.port.includes('-') || row.port.includes(',')">
-                    <div v-if="row.usedStatus === 'inUsed' && row.portUsageDetails?.length" class="status-with-info">
-                      <el-tag type="info" class="mt-1">
-                        已使用 * {{ row.portUsageDetails.length }}
+                <el-table-column type="selection" width="55" />
+                <el-table-column label="区域" prop="zone" width="100">
+                  <template #default="{ row }">
+                    <el-tag effect="plain">{{ row.zone }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="IP类型" prop="family" width="100">
+                  <template #default="{ row }">
+                    <el-tag type="info" v-if="row.family === 'ipv4'">IPv4</el-tag>
+                    <el-tag type="success" v-else-if="row.family === 'ipv6'">IPv6</el-tag>
+                    <el-tag type="warning" v-else-if="row.family === 'both'">IPv4/IPv6</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="协议" prop="protocol" width="100" />
+                <el-table-column label="端口" prop="port" width="120" />
+                <el-table-column label="状态" width="150">
+                  <template #default="{ row }">
+                    <!-- 单个端口且正在使用 -->
+                    <div v-if="!row.port.includes('-') && !row.port.includes(',') && row.usedStatus === 'inUsed'">
+                      <el-tag type="info">
+                        已使用: {{ row.portUsageDetails?.[0]?.processName || 'Unknown' }}
                       </el-tag>
-                      <el-popover placement="right" :width="360" trigger="hover">
+                      <el-popover placement="right" :width="300" trigger="hover" v-if="row.portUsageDetails?.length">
                         <template #default>
-                          <div class="used-ports-list">
-                            <div class="used-ports-list-title">已使用端口:</div>
-                            
-                            <!-- 当使用端口数量小于等于10个，直接全部展示 -->
-                            <div v-if="row.portUsageDetails.length <= 10" class="used-ports-grid">
-                              <div
-                                v-for="(item, index) in row.portUsageDetails" 
-                                :key="index" 
-                                class="port-usage-item"
-                              >
-                              <div class="port-process">
-                                <span class="port-number">
-                                  {{ item.portNumber }}
-                                  <el-tag type="info" size="small" style="margin-left:4px;">
-                                    {{ item.protocol ? item.protocol.toUpperCase() : '' }}
-                                  </el-tag>
-                                </span>
-                                <span class="process-name">{{ item.processName }}</span>
-                              </div>
-                              </div>
+                          <div class="port-detail-card">
+                            <div class="port-detail-title">端口使用详情</div>
+                            <div class="port-detail-item">
+                              <span class="port-detail-label">端口:</span>
+                              <span class="port-detail-value">{{ row.port }}</span>
                             </div>
-                            
-                            <!-- 当使用端口数量大于10个，使用下拉菜单 -->
-                            <div v-else class="port-usage-dropdown">
-                              <div class="select-wrapper">
-                                <el-select v-model="selectedPort" placeholder="选择端口查看详情" style="width: 100%;">
-                                  <el-option
-                                    v-for="item in row.portUsageDetails"
-                                    :key="item.portNumber"
-                                    :label="`${item.portNumber} (${item.protocol ? item.protocol.toUpperCase() : ''}) - ${item.processName}`"
-                                    :value="item.portNumber"
-                                  />
-                                </el-select>
-                              </div>
-                              
-                              <!-- 选择端口后展示详情 -->
-                              <div v-if="selectedPort" class="port-detail-card mt-3">
-                                <div class="port-detail-title">端口使用详情</div>
-                                <div v-if="getSelectedPortDetail(row, selectedPort)" class="port-details">
-                                  <div class="port-detail-item">
-                                    <span class="port-detail-label">端口:</span>
-                                    <span class="port-detail-value">{{ selectedPort }}</span>
-                                  </div>
-                                  <div class="port-detail-item">
-                                    <span class="port-detail-label">协议:</span>
-                                    <span class="port-detail-value">
-                                      {{ getSelectedPortDetail(row, selectedPort)?.protocol ? getSelectedPortDetail(row, selectedPort)?.protocol.toUpperCase() : '' }}
-                                    </span>
-                                  </div>
-                                  <div class="port-detail-item">
-                                    <span class="port-detail-label">进程:</span>
-                                    <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.processName }}</span>
-                                  </div>
-                                  <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.processId">
-                                    <span class="port-detail-label">PID:</span>
-                                    <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.processId }}</span>
-                                  </div>
-                                  <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.commandLine">
-                                    <span class="port-detail-label">命令行:</span>
-                                    <span class="port-detail-value command-line">{{ getSelectedPortDetail(row, selectedPort)?.commandLine }}</span>
-                                  </div>
-                                </div>
-                              </div>
+                            <div class="port-detail-item">
+                            <span class="port-detail-label">协议:</span>
+                            <span class="port-detail-value">
+                              {{ row.portUsageDetails[0].protocol ? row.portUsageDetails[0].protocol.toUpperCase() : '' }}
+                            </span>
+                            </div>                        
+                            <div class="port-detail-item">
+                              <span class="port-detail-label">进程:</span>
+                              <span class="port-detail-value">{{ row.portUsageDetails[0].processName }}</span>
+                            </div>
+                            <div class="port-detail-item" v-if="row.portUsageDetails[0].processId">
+                              <span class="port-detail-label">PID:</span>
+                              <span class="port-detail-value">{{ row.portUsageDetails[0].processId }}</span>
+                            </div>
+                            <div class="port-detail-item" v-if="row.portUsageDetails[0].listenAddress">
+                              <span class="port-detail-label">监听地址:</span>
+                              <span class="port-detail-value">{{ row.portUsageDetails[0].listenAddress }}</span>
+                            </div>
+                            <div class="port-detail-item" v-if="row.portUsageDetails[0].commandLine">
+                              <span class="port-detail-label">命令行:</span>
+                              <span class="port-detail-value command-line">{{ row.portUsageDetails[0].commandLine }}</span>
                             </div>
                           </div>
                         </template>
@@ -1840,354 +1996,435 @@ onMounted(async () => {
                         </template>
                       </el-popover>
                     </div>
+                    
+                    <!-- 区间端口或多个端口 -->
+                    <div v-else-if="row.port.includes('-') || row.port.includes(',')">
+                      <div v-if="row.usedStatus === 'inUsed' && row.portUsageDetails?.length" class="status-with-info">
+                        <el-tag type="info" class="mt-1">
+                          已使用 * {{ row.portUsageDetails.length }}
+                        </el-tag>
+                        <el-popover placement="right" :width="360" trigger="hover">
+                          <template #default>
+                            <div class="used-ports-list">
+                              <div class="used-ports-list-title">已使用端口:</div>
+                              
+                              <!-- 当使用端口数量小于等于10个，直接全部展示 -->
+                              <div v-if="row.portUsageDetails.length <= 10" class="used-ports-grid">
+                                <div
+                                  v-for="(item, index) in row.portUsageDetails" 
+                                  :key="index" 
+                                  class="port-usage-item"
+                                >
+                                <div class="port-process">
+                                  <span class="port-number">
+                                    {{ item.portNumber }}
+                                    <el-tag type="info" size="small" style="margin-left:4px;">
+                                      {{ item.protocol ? item.protocol.toUpperCase() : '' }}
+                                    </el-tag>
+                                  </span>
+                                  <span class="process-name">{{ item.processName }}</span>
+                                </div>
+                                </div>
+                              </div>
+                              
+                              <!-- 当使用端口数量大于10个，使用下拉菜单 -->
+                              <div v-else class="port-usage-dropdown">
+                                <div class="select-wrapper">
+                                  <el-select v-model="selectedPort" placeholder="选择端口查看详情" style="width: 100%;">
+                                    <el-option
+                                      v-for="item in row.portUsageDetails"
+                                      :key="item.portNumber"
+                                      :label="`${item.portNumber} (${item.protocol ? item.protocol.toUpperCase() : ''}) - ${item.processName}`"
+                                      :value="item.portNumber"
+                                    />
+                                  </el-select>
+                                </div>
+                                
+                                <!-- 选择端口后展示详情 -->
+                                <div v-if="selectedPort" class="port-detail-card mt-3">
+                                  <div class="port-detail-title">端口使用详情</div>
+                                  <div v-if="getSelectedPortDetail(row, selectedPort)" class="port-details">
+                                    <div class="port-detail-item">
+                                      <span class="port-detail-label">端口:</span>
+                                      <span class="port-detail-value">{{ selectedPort }}</span>
+                                    </div>
+                                    <div class="port-detail-item">
+                                      <span class="port-detail-label">协议:</span>
+                                      <span class="port-detail-value">
+                                        {{ getSelectedPortDetail(row, selectedPort)?.protocol ? getSelectedPortDetail(row, selectedPort)?.protocol.toUpperCase() : '' }}
+                                      </span>
+                                    </div>
+                                    <div class="port-detail-item">
+                                      <span class="port-detail-label">进程:</span>
+                                      <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.processName }}</span>
+                                    </div>
+                                    <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.processId">
+                                      <span class="port-detail-label">PID:</span>
+                                      <span class="port-detail-value">{{ getSelectedPortDetail(row, selectedPort)?.processId }}</span>
+                                    </div>
+                                    <div class="port-detail-item" v-if="getSelectedPortDetail(row, selectedPort)?.commandLine">
+                                      <span class="port-detail-label">命令行:</span>
+                                      <span class="port-detail-value command-line">{{ getSelectedPortDetail(row, selectedPort)?.commandLine }}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </template>
+                          <template #reference>
+                            <el-icon class="info-icon"><InfoFilled /></el-icon>
+                          </template>
+                        </el-popover>
+                      </div>
+                      <div v-else>
+                        <el-tag type="success" v-if="row.usedStatus === 'notUsed'">未使用</el-tag>
+                        <el-tag type="success" v-else>未使用</el-tag>
+                      </div>
+                    </div>
+                    
+                    <!-- 默认情况 -->
                     <div v-else>
-                      <el-tag type="success" v-if="row.usedStatus === 'notUsed'">未使用</el-tag>
+                      <el-tag type="info" v-if="row.usedStatus === 'inUsed'">已使用</el-tag>
+                      <el-tag type="success" v-else-if="row.usedStatus === 'notUsed'">未使用</el-tag>
                       <el-tag type="success" v-else>未使用</el-tag>
                     </div>
-                  </div>
-                  
-                  <!-- 默认情况 -->
-                  <div v-else>
-                    <el-tag type="info" v-if="row.usedStatus === 'inUsed'">已使用</el-tag>
-                    <el-tag type="success" v-else-if="row.usedStatus === 'notUsed'">未使用</el-tag>
-                    <el-tag type="success" v-else>未使用</el-tag>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="策略" width="120">
-                <template #default="{ row }">
-                  <el-button v-if="row.strategy === 'accept'" link type="success">
-                    允许
-                  </el-button>
-                  <el-button v-else link type="danger">
-                    拒绝
-                  </el-button>
-                </template>
-              </el-table-column>
-              <el-table-column label="地址" width="150">
-                <template #default="{ row }">
-                  <span v-if="row.sourceType === 'specific'">{{ row.sourceAddress }}</span>
-                  <span v-else-if="row.sourceType === 'any' && row.sourceAddress === '0.0.0.0'">any</span>
-                  <span v-else>{{ row.sourceAddress }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="描述" prop="description" min-width="180" show-overflow-tooltip />
-              <el-table-column label="操作" width="150" fixed="right">
-                <template #default="{ row }">
-                  <el-button link type="primary" :icon="Edit" size="small" @click="editPortRule(row)">编辑</el-button>
-                  <el-button link type="danger" :icon="Delete" size="small" @click="deletePortRule(row)">删除</el-button>
-                </template>
-              </el-table-column>
-              <el-table-column label="持久化" width="80" align="center">
-                <template #default="{ row }">
-                  <el-tag type="success" v-if="row.permanent">是</el-tag>
-                  <el-tag type="info" v-else>否</el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
+                  </template>
+                </el-table-column>
+                <el-table-column label="策略" width="120">
+                  <template #default="{ row }">
+                    <el-button v-if="row.strategy === 'accept'" link type="success">
+                      允许
+                    </el-button>
+                    <el-button v-else link type="danger">
+                      拒绝
+                    </el-button>
+                  </template>
+                </el-table-column>
+                <el-table-column label="地址" width="150">
+                  <template #default="{ row }">
+                    <span v-if="row.sourceType === 'specific'">{{ row.sourceAddress }}</span>
+                    <span v-else-if="row.sourceType === 'any' && row.sourceAddress === '0.0.0.0'">any</span>
+                    <span v-else>{{ row.sourceAddress }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="描述" prop="description" min-width="180" show-overflow-tooltip />
+                <el-table-column label="操作" width="150" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" :icon="Edit" size="small" @click="editPortRule(row)">编辑</el-button>
+                    <el-button link type="danger" :icon="Delete" size="small" @click="deletePortRule(row)">删除</el-button>
+                  </template>
+                </el-table-column>
+                <el-table-column label="持久化" width="80" align="center">
+                  <template #default="{ row }">
+                    <el-tag type="success" v-if="row.permanent">是</el-tag>
+                    <el-tag type="info" v-else>否</el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
 
-            <!-- 分页 -->
-            <div class="flex justify-end mt-4">
-              <el-pagination
-                v-model:current-page="portPagination.currentPage"
-                v-model:page-size="portPagination.pageSize"
-                :page-sizes="[10, 20, 50, 100]"
-                layout="total, sizes, prev, pager, next, jumper"
-                :total="portPagination.total"
-                background
-              />
-            </div>
-          </el-card>
-        </el-tab-pane>
-        <el-tab-pane label="端口转发" name="forward">
-          <!-- 端口转发内容 -->
-          <el-card class="mb-4">
-            <!-- 顶部提示 -->
-            <el-alert type="info" :closable="false" class="mb-4">
-              <template #default>
-                <span class="flx-align-center">
-                  <span>端口转发规则管理，用于将外部流量转发到内部服务</span>
-                  <el-link style="font-size: 12px; margin-left: 5px" :icon="Position" type="primary">
-                    查看文档
-                  </el-link>
-                </span>
-              </template>
-            </el-alert>
+              <!-- 分页 -->
+              <div class="flex justify-end mt-4">
+                <el-pagination
+                  v-model:current-page="portPagination.currentPage"
+                  v-model:page-size="portPagination.pageSize"
+                  :page-sizes="[10, 20, 50, 100]"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  :total="portPagination.total"
+                  background
+                />
+              </div>
+            </el-card>
+          </el-tab-pane>
+          <el-tab-pane label="端口转发" name="forward">
+            <!-- 端口转发内容 -->
+            <el-card class="mb-4">
+              <!-- 顶部提示 -->
+              <el-alert type="info" :closable="false" class="mb-4">
+                <template #default>
+                  <span class="flx-align-center">
+                    <span>端口转发规则管理，用于将外部流量转发到内部服务</span>
+                    <el-link style="font-size: 12px; margin-left: 5px" :icon="Position" type="primary">
+                      查看文档
+                    </el-link>
+                  </span>
+                </template>
+              </el-alert>
 
-            <!-- 搜索过滤区 -->
-            <div class="flx-align-center mb-4">
-              <el-input
-                v-model="forwardSearchQuery"
-                placeholder="搜索源端口、目标端口、地址..."
-                class="p-w-200"
-                clearable
+              <!-- 搜索过滤区 -->
+              <div class="flx-align-center mb-4">
+                <el-input
+                  v-model="forwardSearchQuery"
+                  placeholder="搜索源端口、目标端口、地址..."
+                  class="p-w-200"
+                  clearable
+                >
+                  <template #prefix>
+                    <el-icon><Search /></el-icon>
+                  </template>
+                </el-input>
+              </div>
+
+              <!-- 工具栏 -->
+              <div class="flex justify-between gap-2 flex-wrap sm:flex-row mb-4">
+                <div class="flex flex-wrap gap-3">
+                  <el-button type="primary" icon="Plus">
+                    创建转发规则
+                  </el-button>
+                  <el-button :disabled="selectedForwardRows.length === 0" icon="Delete" plain>
+                    删除
+                  </el-button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                  <TableSetting v-model:refreshRate="refreshRate" />
+                </div>
+              </div>
+
+              <!-- 表格 -->
+              <el-table
+                :data="paginatedForwardRules"
+                @selection-change="(val) => selectedForwardRows = val"
+                border
+                style="width: 100%"
               >
-                <template #prefix>
-                  <el-icon><Search /></el-icon>
-                </template>
-              </el-input>
-            </div>
+                <el-table-column type="selection" width="55" />
+                <el-table-column label="协议" prop="protocol" width="100" />
+                <el-table-column label="源端口" prop="srcPort" width="100" />
+                <el-table-column label="目标端口" prop="dstPort" width="100" />
+                <el-table-column label="目标地址" prop="dstAddr" min-width="150" />
+                <el-table-column label="描述" prop="description" min-width="200" show-overflow-tooltip />
+                <el-table-column label="操作" width="150" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" icon="Edit" size="small">编辑</el-button>
+                    <el-button link type="danger" icon="Delete" size="small">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
 
-            <!-- 工具栏 -->
-            <div class="flex justify-between gap-2 flex-wrap sm:flex-row mb-4">
-              <div class="flex flex-wrap gap-3">
-                <el-button type="primary" icon="Plus">
-                  创建转发规则
-                </el-button>
-                <el-button :disabled="selectedForwardRows.length === 0" icon="Delete" plain>
-                  删除
-                </el-button>
+              <!-- 分页 -->
+              <div class="flex justify-end mt-4">
+                <el-pagination
+                  v-model:current-page="forwardPagination.currentPage"
+                  v-model:page-size="forwardPagination.pageSize"
+                  :page-sizes="[10, 20, 50, 100]"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  :total="forwardPagination.total"
+                  background
+                />
               </div>
-              <div class="flex flex-wrap gap-3">
-                <TableSetting v-model:refreshRate="refreshRate" />
-              </div>
-            </div>
-
-            <!-- 表格 -->
-            <el-table
-              :data="paginatedForwardRules"
-              @selection-change="(val) => selectedForwardRows = val"
-              border
-              style="width: 100%"
-            >
-              <el-table-column type="selection" width="55" />
-              <el-table-column label="协议" prop="protocol" width="100" />
-              <el-table-column label="源端口" prop="srcPort" width="100" />
-              <el-table-column label="目标端口" prop="dstPort" width="100" />
-              <el-table-column label="目标地址" prop="dstAddr" min-width="150" />
-              <el-table-column label="描述" prop="description" min-width="200" show-overflow-tooltip />
-              <el-table-column label="操作" width="150" fixed="right">
-                <template #default="{ row }">
-                  <el-button link type="primary" icon="Edit" size="small">编辑</el-button>
-                  <el-button link type="danger" icon="Delete" size="small">删除</el-button>
+            </el-card>
+          </el-tab-pane>
+          <el-tab-pane label="IP规则" name="ip">
+            <!-- IP规则内容 -->
+            <el-card class="mb-4">
+              <!-- 顶部提示 -->
+              <el-alert type="info" :closable="false" class="mb-4">
+                <template #default>
+                  <span class="flx-align-center">
+                    <span>IP规则管理，用于控制特定IP或网段访问</span>
+                    <el-link style="font-size: 12px; margin-left: 5px" :icon="Position" type="primary">
+                      查看文档
+                    </el-link>
+                  </span>
                 </template>
-              </el-table-column>
-            </el-table>
+              </el-alert>
 
-            <!-- 分页 -->
-            <div class="flex justify-end mt-4">
-              <el-pagination
-                v-model:current-page="forwardPagination.currentPage"
-                v-model:page-size="forwardPagination.pageSize"
-                :page-sizes="[10, 20, 50, 100]"
-                layout="total, sizes, prev, pager, next, jumper"
-                :total="forwardPagination.total"
-                background
-              />
-            </div>
-          </el-card>
-        </el-tab-pane>
-        <el-tab-pane label="IP规则" name="ip">
-          <!-- IP规则内容 -->
-          <el-card class="mb-4">
-            <!-- 顶部提示 -->
-            <el-alert type="info" :closable="false" class="mb-4">
-              <template #default>
-                <span class="flx-align-center">
-                  <span>IP规则管理，用于控制特定IP或网段访问</span>
-                  <el-link style="font-size: 12px; margin-left: 5px" :icon="Position" type="primary">
-                    查看文档
-                  </el-link>
-                </span>
-              </template>
-            </el-alert>
+              <!-- 搜索过滤区 -->
+              <div class="flx-align-center mb-4">
+                <el-select v-model="ipSearchStrategy" clearable class="p-w-200">
+                  <template #prefix>策略</template>
+                  <el-option label="全部" value=""></el-option>
+                  <el-option label="允许" value="accept"></el-option>
+                  <el-option label="拒绝" value="drop"></el-option>
+                </el-select>
+                <el-input
+                  v-model="ipSearchQuery"
+                  placeholder="搜索IP地址、描述..."
+                  class="p-w-200 ml-2"
+                  clearable
+                >
+                  <template #prefix>
+                    <el-icon><Search /></el-icon>
+                  </template>
+                </el-input>
+              </div>
 
-            <!-- 搜索过滤区 -->
-            <div class="flx-align-center mb-4">
-              <el-select v-model="ipSearchStrategy" clearable class="p-w-200">
-                <template #prefix>策略</template>
-                <el-option label="全部" value=""></el-option>
-                <el-option label="允许" value="accept"></el-option>
-                <el-option label="拒绝" value="drop"></el-option>
-              </el-select>
-              <el-input
-                v-model="ipSearchQuery"
-                placeholder="搜索IP地址、描述..."
-                class="p-w-200 ml-2"
-                clearable
+              <!-- 工具栏 -->
+              <div class="flex justify-between gap-2 flex-wrap sm:flex-row mb-4">
+                <div class="flex flex-wrap gap-3">
+                  <el-button type="primary" icon="Plus">
+                    创建IP规则
+                  </el-button>
+                  <el-button :disabled="selectedIPRows.length === 0" icon="Delete" plain>
+                    删除
+                  </el-button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                  <TableSetting v-model:refreshRate="refreshRate" />
+                </div>
+              </div>
+
+              <!-- 表格 -->
+              <el-table
+                :data="paginatedIPRules"
+                @selection-change="(val) => selectedIPRows = val"
+                border
+                style="width: 100%"
               >
-                <template #prefix>
-                  <el-icon><Search /></el-icon>
-                </template>
-              </el-input>
-            </div>
+                <el-table-column type="selection" width="55" />
+                <el-table-column label="地址" prop="address" min-width="200" />
+                <el-table-column label="策略" width="120">
+                  <template #default="{ row }">
+                    <el-button v-if="row.strategy === 'accept'" link type="success">
+                      允许
+                    </el-button>
+                    <el-button v-else link type="danger">
+                      拒绝
+                    </el-button>
+                  </template>
+                </el-table-column>
+                <el-table-column label="描述" prop="description" min-width="200" show-overflow-tooltip />
+                <el-table-column label="操作" width="150" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link type="primary" icon="Edit" size="small">编辑</el-button>
+                    <el-button link type="danger" icon="Delete" size="small">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
 
-            <!-- 工具栏 -->
-            <div class="flex justify-between gap-2 flex-wrap sm:flex-row mb-4">
-              <div class="flex flex-wrap gap-3">
-                <el-button type="primary" icon="Plus">
-                  创建IP规则
-                </el-button>
-                <el-button :disabled="selectedIPRows.length === 0" icon="Delete" plain>
-                  删除
-                </el-button>
+              <!-- 分页 -->
+              <div class="flex justify-end mt-4">
+                <el-pagination
+                  v-model:current-page="ipPagination.currentPage"
+                  v-model:page-size="ipPagination.pageSize"
+                  :page-sizes="[10, 20, 50, 100]"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  :total="ipPagination.total"
+                  background
+                />
               </div>
-              <div class="flex flex-wrap gap-3">
-                <TableSetting v-model:refreshRate="refreshRate" />
-              </div>
-            </div>
+            </el-card>
+          </el-tab-pane>
+        </el-tabs>
+        
+        <!-- 如果防火墙未运行，显示提示卡片 -->
+        <el-card v-if="firewallStatus !== 'running' && maskShow" class="mask-prompt mb-4">
+          <span>防火墙未启动</span>
+        </el-card>
+      </div>
 
-            <!-- 表格 -->
-            <el-table
-              :data="paginatedIPRules"
-              @selection-change="(val) => selectedIPRows = val"
-              border
-              style="width: 100%"
-            >
-              <el-table-column type="selection" width="55" />
-              <el-table-column label="地址" prop="address" min-width="200" />
-              <el-table-column label="策略" width="120">
-                <template #default="{ row }">
-                  <el-button v-if="row.strategy === 'accept'" link type="success">
-                    允许
-                  </el-button>
-                  <el-button v-else link type="danger">
-                    拒绝
-                  </el-button>
-                </template>
-              </el-table-column>
-              <el-table-column label="描述" prop="description" min-width="200" show-overflow-tooltip />
-              <el-table-column label="操作" width="150" fixed="right">
-                <template #default="{ row }">
-                  <el-button link type="primary" icon="Edit" size="small">编辑</el-button>
-                  <el-button link type="danger" icon="Delete" size="small">删除</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-
-            <!-- 分页 -->
-            <div class="flex justify-end mt-4">
-              <el-pagination
-                v-model:current-page="ipPagination.currentPage"
-                v-model:page-size="ipPagination.pageSize"
-                :page-sizes="[10, 20, 50, 100]"
-                layout="total, sizes, prev, pager, next, jumper"
-                :total="ipPagination.total"
-                background
-              />
-            </div>
-          </el-card>
-        </el-tab-pane>
-      </el-tabs>
-      
-      <!-- 如果防火墙未运行，显示提示卡片 -->
-      <el-card v-if="firewallStatus !== 'running' && maskShow" class="mask-prompt mb-4">
-        <span>防火墙未启动</span>
-      </el-card>
-    </div>
-
-    <!-- 端口规则创建弹框 -->
-    <el-drawer
-      v-model="portRuleDrawerVisible"
-      :title="formMode === 'create' ? '创建规则' : '编辑规则'"
-      size="500px"
-      :before-close="cancelPortRuleForm"
-      :show-close="false"
-      destroy-on-close
-    >
-      <template #header>
-        <div class="drawer-header">
-          <el-icon @click="cancelPortRuleForm" class="drawer-back-icon"><ArrowLeft /></el-icon>
-          <span class="drawer-title">{{ formMode === 'create' ? '创建规则' : '编辑规则' }}</span>
-        </div>
-      </template>
-      <el-form 
-        ref="portRuleFormRef" 
-        :model="portRuleForm" 
-        :rules="portRuleFormRules"
-        label-width="80px"
-        class="port-rule-form"
+      <!-- 端口规则创建弹框 -->
+      <el-drawer
+        v-model="portRuleDrawerVisible"
+        :title="formMode === 'create' ? '创建规则' : '编辑规则'"
+        size="500px"
+        :before-close="cancelPortRuleForm"
+        :show-close="false"
+        destroy-on-close
       >
-        <el-form-item label="协议" prop="protocol">
-          <el-select v-model="portRuleForm.protocol" class="w-full">
-            <el-option label="TCP" value="tcp"></el-option>
-            <el-option label="UDP" value="udp"></el-option>
-            <el-option label="TCP/UDP" value="TCP/UDP"></el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="端口" prop="port">
-          <el-input v-model="portRuleForm.port" placeholder="请输入端口" :disabled="formMode === 'edit'"></el-input>
-          <div class="form-tips" v-if="formMode === 'create'">
-            <div>多个端口，如：8080,8081</div>
-            <div>范围端口，如：8080-8089</div>
+        <template #header>
+          <div class="drawer-header">
+            <el-icon @click="cancelPortRuleForm" class="drawer-back-icon"><ArrowLeft /></el-icon>
+            <span class="drawer-title">{{ formMode === 'create' ? '创建规则' : '编辑规则' }}</span>
           </div>
-        </el-form-item>
-        <el-form-item label="来源" prop="sourceType">
-          <el-radio-group v-model="portRuleForm.sourceType">
-            <el-radio label="any">所有 IP</el-radio>
-            <el-radio label="specific">指定 IP</el-radio>
-          </el-radio-group>
-          <el-input 
-            v-if="portRuleForm.sourceType === 'specific'" 
-            v-model="portRuleForm.sourceAddress" 
-            placeholder="请输入IP地址"
-            class="mt-2 w-full"
-          ></el-input>
-          <div v-if="portRuleForm.sourceType === 'specific'" class="form-tips">
-            <div>支持输入 IP 或 IP 范围，如：172.16.10.11 或 172.16.0.0/24</div>
-            <div>多个 IP 或 IP 段请用","隔开：172.16.10.11,172.16.0.0/24</div>
-          </div>
-        </el-form-item>
-        <el-form-item label="策略" prop="strategy">
-          <div class="custom-radio-group">
-            <div class="custom-radio" :class="{ 'is-active': portRuleForm.strategy === 'accept' }">
-              <input
-                type="radio"
-                id="strategy-accept"
-                name="strategy"
-                value="accept"
-                v-model="portRuleForm.strategy"
-                @change="forceRender += 1"
-              />
-              <label for="strategy-accept">允许</label>
+        </template>
+        <el-form 
+          ref="portRuleFormRef" 
+          :model="portRuleForm" 
+          :rules="portRuleFormRules"
+          label-width="80px"
+          class="port-rule-form"
+        >
+          <el-form-item label="协议" prop="protocol">
+            <el-select v-model="portRuleForm.protocol" class="w-full">
+              <el-option label="TCP" value="tcp"></el-option>
+              <el-option label="UDP" value="udp"></el-option>
+              <el-option label="TCP/UDP" value="TCP/UDP"></el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="端口" prop="port">
+            <el-input v-model="portRuleForm.port" placeholder="请输入端口" :disabled="formMode === 'edit'"></el-input>
+            <div class="form-tips" v-if="formMode === 'create'">
+              <div>多个端口，如：8080,8081</div>
+              <div>范围端口，如：8080-8089</div>
             </div>
-            <div class="custom-radio" :class="{ 'is-active': portRuleForm.strategy === 'drop' }">
-              <input
-                type="radio"
-                id="strategy-drop"
-                name="strategy"
-                value="drop"
-                v-model="portRuleForm.strategy"
-                @change="forceRender += 1"
-              />
-              <label for="strategy-drop">拒绝</label>
+          </el-form-item>
+          <el-form-item label="来源" prop="sourceType">
+            <el-radio-group v-model="portRuleForm.sourceType">
+              <el-radio label="any">所有 IP</el-radio>
+              <el-radio label="specific">指定 IP</el-radio>
+            </el-radio-group>
+            <el-input 
+              v-if="portRuleForm.sourceType === 'specific'" 
+              v-model="portRuleForm.sourceAddress" 
+              placeholder="请输入IP地址"
+              class="mt-2 w-full"
+            ></el-input>
+            <div v-if="portRuleForm.sourceType === 'specific'" class="form-tips">
+              <div>支持输入 IP 或 IP 范围，如：172.16.10.11 或 172.16.0.0/24</div>
+              <div>多个 IP 或 IP 段请用","隔开：172.16.10.11,172.16.0.0/24</div>
             </div>
+          </el-form-item>
+          <el-form-item label="策略" prop="strategy">
+            <div class="custom-radio-group">
+              <div class="custom-radio" :class="{ 'is-active': portRuleForm.strategy === 'accept' }">
+                <input
+                  type="radio"
+                  id="strategy-accept"
+                  name="strategy"
+                  value="accept"
+                  v-model="portRuleForm.strategy"
+                  @change="forceRender += 1"
+                />
+                <label for="strategy-accept">允许</label>
+              </div>
+              <div class="custom-radio" :class="{ 'is-active': portRuleForm.strategy === 'drop' }">
+                <input
+                  type="radio"
+                  id="strategy-drop"
+                  name="strategy"
+                  value="drop"
+                  v-model="portRuleForm.strategy"
+                  @change="forceRender += 1"
+                />
+                <label for="strategy-drop">拒绝</label>
+              </div>
+            </div>
+          </el-form-item>
+          <el-form-item label="区域" prop="zone">
+            <el-select v-model="portRuleForm.zone" class="w-full" :disabled="formMode === 'edit'">
+              <el-option label="公共区域" value="public"></el-option>
+              <el-option label="私有区域" value="private"></el-option>
+              <el-option label="内部区域" value="internal"></el-option>
+              <el-option label="DMZ区域" value="dmz"></el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="IP类型" prop="family">
+            <el-select v-model="portRuleForm.family" class="w-full" :disabled="formMode === 'edit'">
+              <el-option label="IPv4" value="ipv4"></el-option>
+              <el-option label="IPv6" value="ipv6"></el-option>
+              <el-option label="IPv4/IPv6" value="both"></el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="持久化" prop="permanent">
+            <el-switch v-model="portRuleForm.permanent"></el-switch>
+          </el-form-item>
+          <el-form-item label="描述" prop="description">
+            <el-input 
+              v-model="portRuleForm.description" 
+              type="textarea" 
+              placeholder="请输入描述信息"
+              :rows="3"
+            ></el-input>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <div class="drawer-footer">
+            <el-button @click="cancelPortRuleForm">取消</el-button>
+            <el-button type="primary" @click="submitPortRuleForm">确认</el-button>
           </div>
-        </el-form-item>
-        <el-form-item label="区域" prop="zone">
-          <el-select v-model="portRuleForm.zone" class="w-full" :disabled="formMode === 'edit'">
-            <el-option label="公共区域" value="public"></el-option>
-            <el-option label="私有区域" value="private"></el-option>
-            <el-option label="内部区域" value="internal"></el-option>
-            <el-option label="DMZ区域" value="dmz"></el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="IP类型" prop="family">
-          <el-select v-model="portRuleForm.family" class="w-full" :disabled="formMode === 'edit'">
-            <el-option label="IPv4" value="ipv4"></el-option>
-            <el-option label="IPv6" value="ipv6"></el-option>
-            <el-option label="IPv4/IPv6" value="both"></el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="持久化" prop="permanent">
-          <el-switch v-model="portRuleForm.permanent"></el-switch>
-        </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input 
-            v-model="portRuleForm.description" 
-            type="textarea" 
-            placeholder="请输入描述信息"
-            :rows="3"
-          ></el-input>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <div class="drawer-footer">
-          <el-button @click="cancelPortRuleForm">取消</el-button>
-          <el-button type="primary" @click="submitPortRuleForm">确认</el-button>
-        </div>
-      </template>
-    </el-drawer>
+        </template>
+      </el-drawer>
+    </div>
   </div>
 </template>
 
@@ -2214,9 +2451,27 @@ onMounted(async () => {
   width: 150px;
 }
 .mask {
+  position: relative;
   opacity: 0.6;
   pointer-events: none;
 }
+
+.mask::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.5);
+  z-index: 10;
+}
+
+/* 加载占位符样式 */
+.loading-placeholder {
+  min-height: 400px;
+}
+
 .flx-align-center {
   display: flex;
   align-items: center;

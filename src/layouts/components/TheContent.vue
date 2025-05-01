@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ErrorBoundary from '../../components/ErrorBoundary.vue'
 const themeStore = useThemeStore()
 // const tabStore = useTabStore() // Temporarily comment out
 const animateName = computed(() => (themeStore.settings.showAnimation
@@ -9,11 +10,13 @@ const animateName = computed(() => (themeStore.settings.showAnimation
 </script>
 
 <template>
-  <RouterView v-slot="{ Component, route }">
-    <Transition :name="animateName" mode="out-in" appear>
-      <!-- <KeepAlive :include="keepAliveRoute" :max="10"> -->
-        <component :is="Component" :key="route.path" />
-      <!-- </KeepAlive> -->
-    </Transition>
-  </RouterView>
+  <ErrorBoundary>
+    <RouterView v-slot="{ Component, route }">
+      <Transition :name="animateName" mode="out-in" appear>
+        <!-- <KeepAlive :include="keepAliveRoute" :max="10"> -->
+          <component :is="Component" :key="route.path" />
+        <!-- </KeepAlive> -->
+      </Transition>
+    </RouterView>
+  </ErrorBoundary>
 </template>
