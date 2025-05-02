@@ -1,0 +1,87 @@
+/** 防火墙组件预加载样式 */
+
+/* 这些样式会在页面加载时立即应用，防止闪烁 */
+.firewall-container {
+  width: 100% !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  font-family: var(--el-font-family) !important;
+  color: var(--el-text-color-primary) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* 基础表格样式预加载 */
+.firewall-container .el-table {
+  width: 100% !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+/* 基础卡片样式预加载 */
+.firewall-container .el-card {
+  margin-bottom: 16px !important;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid #e4e7ed !important;
+  border-radius: 4px !important;
+}
+
+/* 基础标签页样式预加载 */
+.firewall-container .el-tabs {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* 基础按钮样式预加载 */
+.firewall-container .el-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+}
+
+/* 基础表单样式预加载 */
+.firewall-container .el-form-item {
+  margin-bottom: 18px !important;
+}
+
+/* 基础输入框样式预加载 */
+.firewall-container .el-input {
+  position: relative !important;
+  font-size: 14px !important;
+  display: inline-flex !important;
+  width: 100% !important;
+}
+
+/* 基础选择器样式预加载 */
+.firewall-container .el-select {
+  width: 100% !important;
+  display: inline-block !important;
+  position: relative !important;
+}
+
+/* 基础分页样式预加载 */
+.firewall-container .el-pagination {
+  margin-top: 16px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* 确保遮罩层样式预加载 */
+.mask {
+  position: relative !important;
+  opacity: 0.6 !important;
+  pointer-events: none !important;
+}
+
+.mask::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background-color: rgba(255, 255, 255, 0.5) !important;
+  z-index: 10 !important;
+}

@@ -105,12 +105,13 @@ export function createRouterGuard(router: Router) {
       }, 200)
     }
 
+    // 移除对防火墙页面的特殊处理，因为已通过组件内部生命周期正确处理资源清理
     // 检测从防火墙页面离开的情况
-    if (_from.path === '/agents/firewall' && to.path !== '/agents/firewall') {
-      console.log('【全局守卫】检测到从防火墙页面离开，将在导航后刷新');
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
-    }
+    // if (_from.path === '/agents/firewall' && to.path !== '/agents/firewall') {
+    //   console.log('【全局守卫】检测到从防火墙页面离开，将在导航后刷新');
+    //   setTimeout(() => {
+    //     window.location.reload();
+    //   }, 100);
+    // }
   })
 }

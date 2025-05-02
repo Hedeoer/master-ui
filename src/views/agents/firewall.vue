@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch, onUnmounted, nextTick, onActivated, onDeactivated, onBeforeUnmount } from 'vue';
+// 注意：内联样式加载器已移至main.ts中导入
 import {
   ElCard,
   ElTabs,
@@ -31,8 +32,8 @@ import { Search, Position, Delete, Edit, Plus, Warning, Operation, Setting, Info
 import TableSetting from '../../components/TableSetting.vue';
 import type { FormInstance, FormRules } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
-import { 
-  fetchPortRulesByNodeId as apiFetchPortRulesByNodeId, 
+import {
+  fetchPortRulesByNodeId as apiFetchPortRulesByNodeId,
   fetchNodeListApi,
   addPortRuleApi,
   updatePortRuleApi,
@@ -50,10 +51,10 @@ import {
 // 建议与后端确认此路由是否应被缓存。
 // 当前代码已简化，以减少 KeepAlive 可能带来的副作用。
 defineOptions({
-  name: 'agents_firewall', // 修改为与其他路由命名风格一致（小写+下划线）
+  name: 'agents_firewall', // 已修改为与菜单配置一致（小写+下划线）
   // __meta 非标准属性，仅作标记或注释用途
   // __meta: {
-  //   keepAlive: true, // 标记组件需要缓存
+  //   keepAlive: false, // 标记组件不需要缓存
   // },
 });
 
@@ -68,6 +69,8 @@ onErrorCaptured((err, instance, info) => {
 
 // 添加路由离开守卫，在导航离开后刷新页面
 // 这是一个临时解决方案，确保用户离开防火墙页面后可以正常浏览其他页面
+import { onBeforeRouteLeave } from 'vue-router';
+
 onBeforeRouteLeave((to, from, next) => {
   console.log('【离开防火墙】目标路由:', to.path);
   // 允许导航继续
@@ -117,28 +120,28 @@ const fetchFirewallStatus = async () => {
       loading.value = false;
       return { success: false, message: '未选择节点' };
     }
-    
+
     // 通过API获取防火墙状态
     try {
       const result = await fetchFirewallStatusApi(currentNodeId.value);
-      
+
       if (result.success && result.data) {
         firewallStatus.value = result.data.status;
         firewallName.value = result.data.name;
         firewallVersion.value = result.data.version;
-        
+
         // 打印日志，便于排错
         console.log('获取到防火墙状态:', result.data);
         console.log('Ping响应状态:', result.data.pingStatus);
-        
+
         // 确保pingDisabled值正确设置
         const shouldDisablePing = result.data.pingStatus === 'Disable';
         console.log('设置pingDisabled为:', shouldDisablePing);
         pingDisabled.value = shouldDisablePing;
-        
+
         // 更新遮罩显示状态
         maskShow.value = result.data.status !== 'running';
-        
+
         return result;
       } else {
         console.error('获取防火墙状态失败: 请求成功但数据无效');
@@ -182,20 +185,30 @@ watch(refreshRate, (newRate) => {
     clearInterval(refreshTimer);
     refreshTimer = null;
   }
-  
+
   // 如果选择了刷新频率，设置新的定时器
   if (newRate !== '不刷新') {
     const interval = parseInt(newRate) * 1000;
     refreshTimer = setInterval(() => {
-      refreshData();
+      // 只有在组件仍然活动时才执行刷新
+      if (document.querySelector('.firewall-container')) {
+        refreshData();
+      } else {
+        // 如果组件已经不存在，清除定时器
+        if (refreshTimer) {
+          clearInterval(refreshTimer);
+          refreshTimer = null;
+          console.log('组件不存在，已清除refreshTimer');
+        }
+      }
     }, interval);
   }
-});
+}, { immediate: false });
 
 // 监听活动标签页变化
 watch(activeTab, () => {
-  // 如果设置了定时刷新，需要立即刷新一次当前标签页数据
-  if (refreshRate.value !== '不刷新') {
+  // 只有当前有选中节点，且设置了定时刷新时，才需要刷新数据
+  if (currentNodeId.value && refreshRate.value !== '不刷新') {
     refreshData();
   }
 });
@@ -205,9 +218,14 @@ watch(activeTab, () => {
 
 // 刷新数据方法
 const refreshData = () => {
+  // 如果没有选择节点，不执行刷新
+  if (!currentNodeId.value) {
+    return;
+  }
+
   // 先显示加载状态
   loading.value = true;
-  
+
   // 捕获当前的筛选和分页状态
   const currentTab = activeTab.value;
   const currentPortPage = portPagination.currentPage;
@@ -217,38 +235,33 @@ const refreshData = () => {
   const currentPortQuery = portSearchQuery.value;
   const currentPortZone = portSearchZone.value;
   const currentPortFamily = portSearchFamily.value;
-  
+
   const currentIPPage = ipPagination.currentPage;
   const currentIPStrategy = ipSearchStrategy.value;
   const currentIPQuery = ipSearchQuery.value;
-  
+
   const currentForwardPage = forwardPagination.currentPage;
   const currentForwardQuery = forwardSearchQuery.value;
-  
+
   // 根据当前活动标签页刷新对应数据
   if (currentTab === 'port') {
-    // 检查当前是否有选中节点
-    if (currentNodeId.value) {
-      // 使用API获取端口规则数据
-      fetchPortRulesByNodeId(currentNodeId.value)
-        .then(() => {
-          // 恢复筛选和分页状态
-          portPagination.currentPage = currentPortPage;
-          portPagination.pageSize = currentPortSize;
-          portSearchStatus.value = currentPortStatus;
-          portSearchStrategy.value = currentPortStrategy;
-          portSearchQuery.value = currentPortQuery;
-          portSearchZone.value = currentPortZone;
-          portSearchFamily.value = currentPortFamily;
-        })
-        .finally(() => {
-          loading.value = false;
-        });
-    } else {
-      loading.value = false;
-    }
+    // 使用API获取端口规则数据
+    fetchPortRulesByNodeId(currentNodeId.value)
+      .then(() => {
+        // 恢复筛选和分页状态
+        portPagination.currentPage = currentPortPage;
+        portPagination.pageSize = currentPortSize;
+        portSearchStatus.value = currentPortStatus;
+        portSearchStrategy.value = currentPortStrategy;
+        portSearchQuery.value = currentPortQuery;
+        portSearchZone.value = currentPortZone;
+        portSearchFamily.value = currentPortFamily;
+      })
+      .finally(() => {
+        loading.value = false;
+      });
   } else if (currentTab === 'ip') {
-    // 模拟API调用延迟
+    // 模拟API调用延迟 - 后续应替换为真实API
     setTimeout(() => {
       try {
         // 重新获取IP规则数据
@@ -258,12 +271,12 @@ const refreshData = () => {
           newData[0] = { ...newData[0], description: `允许特定主机访问 (刷新于 ${new Date().toLocaleTimeString()})` };
         }
         ipRules.value = newData;
-        
+
         // 恢复筛选和分页状态
         ipPagination.currentPage = currentIPPage;
         ipSearchStrategy.value = currentIPStrategy;
         ipSearchQuery.value = currentIPQuery;
-        
+
         loading.value = false;
       } catch (error) {
         console.error('刷新IP规则数据失败:', error);
@@ -271,7 +284,7 @@ const refreshData = () => {
       }
     }, 500);
   } else if (currentTab === 'forward') {
-    // 模拟API调用延迟
+    // 模拟API调用延迟 - 后续应替换为真实API
     setTimeout(() => {
       try {
         // 重新获取转发规则数据
@@ -281,11 +294,11 @@ const refreshData = () => {
           newData[0] = { ...newData[0], description: `转发Web流量 (刷新于 ${new Date().toLocaleTimeString()})` };
         }
         forwardRules.value = newData;
-        
+
         // 恢复筛选和分页状态
         forwardPagination.currentPage = currentForwardPage;
         forwardSearchQuery.value = currentForwardQuery;
-        
+
         loading.value = false;
       } catch (error) {
         console.error('刷新转发规则数据失败:', error);
@@ -317,15 +330,15 @@ interface ForwardRule {
 // --- 模拟数据 ---
 // 端口规则数据
 const portRules = ref<ApiPortRule[]>([
-  { 
-    id: 1, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '22', 
-    strategy: 'accept', 
+  {
+    id: 1,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '22',
+    strategy: 'accept',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: 'SSH服务', 
+    description: 'SSH服务',
     usedStatus: 'inUsed',
     zone: 'public',
     family: 'ipv4',
@@ -334,15 +347,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '1', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 22, processName: 'sshd', processId: 567, commandLine: '/usr/sbin/sshd', listenAddress: '0.0.0.0:22' }
     ]
   },
-  { 
-    id: 2, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '80', 
-    strategy: 'accept', 
+  {
+    id: 2,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '80',
+    strategy: 'accept',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: 'HTTP服务', 
+    description: 'HTTP服务',
     usedStatus: 'inUsed',
     zone: 'public',
     family: 'both',
@@ -351,15 +364,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '2', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 80, processName: 'nginx', processId: 1234, listenAddress: '0.0.0.0:80', commandLine: '/usr/sbin/nginx' }
     ]
   },
-  { 
-    id: 3, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '443', 
-    strategy: 'accept', 
+  {
+    id: 3,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '443',
+    strategy: 'accept',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: 'HTTPS服务', 
+    description: 'HTTPS服务',
     usedStatus: 'inUsed',
     zone: 'public',
     family: 'both',
@@ -368,15 +381,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '3', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 443, processName: 'nginx', processId: 1234, listenAddress: '0.0.0.0:443', commandLine: '/usr/sbin/nginx' }
     ]
   },
-  { 
-    id: 4, 
-    nodeId: '', 
-    protocol: 'TCP/UDP', 
-    port: '3000-4000', 
-    strategy: 'accept', 
+  {
+    id: 4,
+    nodeId: '',
+    protocol: 'TCP/UDP',
+    port: '3000-4000',
+    strategy: 'accept',
     sourceType: 'specific',
     sourceAddress: '192.168.1.1',
-    description: '开发服务端口范围', 
+    description: '开发服务端口范围',
     usedStatus: null,
     zone: 'private',
     family: 'ipv4',
@@ -387,15 +400,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '4', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 4000, processName: 'node', processId: 9012, commandLine: 'node server.js', listenAddress: '0.0.0.0:4000' }
     ]
   },
-  { 
-    id: 5, 
-    nodeId: '', 
-    protocol: 'UDP', 
-    port: '53', 
-    strategy: 'accept', 
+  {
+    id: 5,
+    nodeId: '',
+    protocol: 'UDP',
+    port: '53',
+    strategy: 'accept',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: 'DNS服务', 
+    description: 'DNS服务',
     usedStatus: 'inUsed',
     zone: 'public',
     family: 'both',
@@ -404,15 +417,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '5', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'udp', portNumber: 53, processName: 'named', processId: 890, commandLine: 'named', listenAddress: '0.0.0.0:53' }
     ]
   },
-  { 
-    id: 6, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '8080-8090', 
-    strategy: 'drop', 
+  {
+    id: 6,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '8080-8090',
+    strategy: 'drop',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: '禁止访问的测试端口范围', 
+    description: '禁止访问的测试端口范围',
     usedStatus: 'inUsed',
     usedPorts: ['8080', '8082', '8085'],
     zone: 'internal',
@@ -424,15 +437,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '6', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 8085, processName: 'python', processId: 3456, commandLine: 'python app.py', listenAddress: '0.0.0.0:8085' }
     ]
   },
-  { 
-    id: 7, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '5000-5020', 
-    strategy: 'drop', 
+  {
+    id: 7,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '5000-5020',
+    strategy: 'drop',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: '大量端口测试', 
+    description: '大量端口测试',
     usedStatus: 'inUsed',
     usedPorts: ['5000', '5001', '5002', '5003', '5004', '5005', '5006', '5007', '5008', '5009', '5010', '5011', '5012'],
     zone: 'dmz',
@@ -454,15 +467,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '7', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 5012, processName: 'memcached', processId: 2013, commandLine: 'memcached', listenAddress: '0.0.0.0:5012' }
     ]
   },
-  { 
-    id: 8, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '25', 
-    strategy: 'drop', 
+  {
+    id: 8,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '25',
+    strategy: 'drop',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: '阻止SMTP', 
+    description: '阻止SMTP',
     usedStatus: null,
     zone: 'dmz',
     family: 'ipv6',
@@ -471,15 +484,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '8', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 25, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:25' }
     ]
   },
-  { 
-    id: 9, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '21', 
-    strategy: 'drop', 
+  {
+    id: 9,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '21',
+    strategy: 'drop',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: '阻止FTP', 
+    description: '阻止FTP',
     usedStatus: null,
     zone: 'dmz',
     family: 'ipv4',
@@ -488,15 +501,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '9', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 21, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:21' }
     ]
   },
-  { 
-    id: 10, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '3389', 
-    strategy: 'drop', 
+  {
+    id: 10,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '3389',
+    strategy: 'drop',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: '阻止远程桌面连接', 
+    description: '阻止远程桌面连接',
     usedStatus: null,
     zone: 'private',
     family: 'both',
@@ -505,15 +518,15 @@ const portRules = ref<ApiPortRule[]>([
       { id: '10', createTime: null, createdBy: null, updateTime: null, updatedBy: null, agentId: '', protocol: 'tcp', portNumber: 3389, processName: 'java', processId: 5678, commandLine: 'java -jar app.jar', listenAddress: '0.0.0.0:3389' }
     ]
   },
-  { 
-    id: 11, 
-    nodeId: '', 
-    protocol: 'TCP', 
-    port: '5900-5910', 
-    strategy: 'drop', 
+  {
+    id: 11,
+    nodeId: '',
+    protocol: 'TCP',
+    port: '5900-5910',
+    strategy: 'drop',
     sourceType: 'any',
     sourceAddress: '0.0.0.0',
-    description: '阻止VNC服务', 
+    description: '阻止VNC服务',
     usedStatus: null,
     zone: 'internal',
     family: 'ipv6',
@@ -605,17 +618,17 @@ const applyPortFilter = () => {
 // 过滤后的端口规则
 const filteredPortRules = computed(() => {
   let result = [...portRules.value];
-  
+
   // 按区域过滤
   if (portSearchZone.value) {
     result = result.filter(rule => rule.zone === portSearchZone.value);
   }
-  
+
   // 按IP类型过滤
   if (portSearchFamily.value) {
     result = result.filter(rule => rule.family === portSearchFamily.value);
   }
-  
+
   // 按状态过滤
   if (portSearchStatus.value) {
     if (portSearchStatus.value === 'used') {
@@ -624,16 +637,16 @@ const filteredPortRules = computed(() => {
       result = result.filter(rule => rule.usedStatus === 'notUsed');
     }
   }
-  
+
   // 按策略过滤
   if (portSearchStrategy.value) {
     result = result.filter(rule => rule.strategy === portSearchStrategy.value);
   }
-  
+
   // 按搜索词过滤
   if (portSearchQuery.value) {
     const query = portSearchQuery.value.toLowerCase();
-    result = result.filter(rule => 
+    result = result.filter(rule =>
       rule.port.toLowerCase().includes(query) ||
       rule.protocol.toLowerCase().includes(query) ||
       rule.description.toLowerCase().includes(query) ||
@@ -641,39 +654,39 @@ const filteredPortRules = computed(() => {
       (rule.sourceType === 'specific' && rule.sourceAddress.toLowerCase().includes(query))
     );
   }
-  
+
   return result;
 });
 
 // 过滤后的IP规则
 const filteredIPRules = computed(() => {
   let result = [...ipRules.value];
-  
+
   // 按策略过滤
   if (ipSearchStrategy.value) {
     result = result.filter(rule => rule.strategy === ipSearchStrategy.value);
   }
-  
+
   // 按搜索词过滤
   if (ipSearchQuery.value) {
     const query = ipSearchQuery.value.toLowerCase();
-    result = result.filter(rule => 
+    result = result.filter(rule =>
       rule.address.toLowerCase().includes(query) ||
       rule.description.toLowerCase().includes(query)
     );
   }
-  
+
   return result;
 });
 
 // 过滤后的转发规则
 const filteredForwardRules = computed(() => {
   let result = [...forwardRules.value];
-  
+
   // 按搜索词过滤
   if (forwardSearchQuery.value) {
     const query = forwardSearchQuery.value.toLowerCase();
-    result = result.filter(rule => 
+    result = result.filter(rule =>
       rule.srcPort.toLowerCase().includes(query) ||
       rule.dstPort.toLowerCase().includes(query) ||
       rule.dstAddr.toLowerCase().includes(query) ||
@@ -681,7 +694,7 @@ const filteredForwardRules = computed(() => {
       rule.description.toLowerCase().includes(query)
     );
   }
-  
+
   return result;
 });
 
@@ -717,21 +730,21 @@ const operateFirewall = async (operation: 'start' | 'stop' | 'restart') => {
     });
     return;
   }
-  
+
   loading.value = true;
-  
+
   try {
     const { success, message } = await operateFirewallApi(currentNodeId.value, operation);
-    
+
     if (success) {
       ElMessage({
         type: 'success',
         message: `防火墙${operation === 'start' ? '启动' : operation === 'stop' ? '停止' : '重启'}成功`
       });
-      
+
       // 刷新防火墙状态
       await fetchFirewallStatus();
-      
+
       // 如果防火墙启动或重启后，且当前有选中节点，则刷新数据
       if ((operation === 'start' || operation === 'restart') && currentNodeId.value) {
         refreshData();
@@ -755,6 +768,8 @@ const operateFirewall = async (operation: 'start' | 'stop' | 'restart') => {
 
 // 添加防抖标志
 const pingTogglePending = ref(false);
+// 添加防抖超时保护
+let pingToggleTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const togglePing = async () => {
   // 如果已经有一个请求在进行中，直接返回
@@ -771,29 +786,40 @@ const togglePing = async () => {
     });
     return;
   }
-  
+
   // 设置防抖标志
   pingTogglePending.value = true;
-  
+
+  // 设置超时保护，10秒后自动重置防抖标志
+  if (pingToggleTimeout) {
+    clearTimeout(pingToggleTimeout);
+  }
+  pingToggleTimeout = setTimeout(() => {
+    // 如果10秒后仍在pending状态，则重置标志
+    if (pingTogglePending.value) {
+      pingTogglePending.value = false;
+      ElMessage({
+        type: 'error',
+        message: 'Ping状态切换请求超时，已重置'
+      });
+    }
+  }, 10000);
+
   // 新状态是当前值的反转
   const newDisabledStatus = !pingDisabled.value;
   // 记录原始状态，用于在失败时恢复
   const originalStatus = pingDisabled.value;
   // 先更新UI状态
   pingDisabled.value = newDisabledStatus;
-  
-  // debug打印，便于排错
-  console.log('切换Ping状态: 原值=', originalStatus, '新值=', newDisabledStatus);
-  console.log('将发送API参数: pingStatus=', newDisabledStatus ? 'Disable' : 'Enable');
-  
+
   try {
     // 注意: pingDisabled为true时，发送'Disable'参数
     //      pingDisabled为false时，发送'Enable'参数
     const { success, message } = await setPingStatusApi(
-      currentNodeId.value, 
+      currentNodeId.value,
       newDisabledStatus ? 'Disable' : 'Enable'
     );
-    
+
     if (success) {
       ElMessage({
         type: 'success',
@@ -818,6 +844,11 @@ const togglePing = async () => {
   } finally {
     // 无论成功还是失败，最后都要重置防抖标志
     pingTogglePending.value = false;
+    // 清除超时保护
+    if (pingToggleTimeout) {
+      clearTimeout(pingToggleTimeout);
+      pingToggleTimeout = null;
+    }
   }
 };
 
@@ -857,19 +888,19 @@ const portRuleFormRules = reactive<FormRules>({
   ],
   port: [
     { required: true, message: '请输入端口', trigger: 'blur' },
-    { 
+    {
       validator: (rule, value, callback) => {
         if (!value) {
           callback(new Error('端口不能为空'))
           return
         }
-        
+
         const portPattern = /^(\d+(-\d+)?)(,\d+(-\d+)?)*$/
         if (!portPattern.test(value)) {
           callback(new Error('端口格式不正确'))
           return
         }
-        
+
         const parts = value.split(',')
         for (const part of parts) {
           if (part.includes('-')) {
@@ -896,19 +927,19 @@ const portRuleFormRules = reactive<FormRules>({
     }
   ],
   sourceAddress: [
-    { 
+    {
       validator: (rule, value, callback) => {
         if (portRuleForm.sourceType === 'specific' && !value) {
           callback(new Error('请输入IP地址'))
           return
         }
-        
+
         if (portRuleForm.sourceType === 'specific' && value) {
           // IP地址格式验证
           const ipAddresses = value.split(',')
           const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/
           const ipv6Pattern = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)$/
-          
+
           for (const ip of ipAddresses) {
             const trimmedIp = ip.trim()
             // 检查IPv4
@@ -916,7 +947,7 @@ const portRuleFormRules = reactive<FormRules>({
               // 验证IPv4地址值范围
               const parts = trimmedIp.split('/')
               const ipParts = parts[0].split('.')
-              
+
               // 验证每个部分的值是否在0-255范围内
               for (const part of ipParts) {
                 const num = parseInt(part, 10)
@@ -925,7 +956,7 @@ const portRuleFormRules = reactive<FormRules>({
                   return
                 }
               }
-              
+
               // 如果有CIDR，验证范围
               if (parts.length > 1) {
                 const cidr = parseInt(parts[1], 10)
@@ -936,17 +967,17 @@ const portRuleFormRules = reactive<FormRules>({
               }
               continue
             }
-            
+
             // 检查IPv6
             if (ipv6Pattern.test(trimmedIp)) {
               continue
             }
-            
+
             callback(new Error(`IP地址格式不正确: ${trimmedIp}`))
             return
           }
         }
-        
+
         callback()
       },
       trigger: 'blur'
@@ -1007,14 +1038,14 @@ const addPortRule = async (ruleData: any): Promise<any> => {
       permanent: ruleData.permanent,
       description: ruleData.description || ''
     };
-    
+
     // 调用真实API
     const { success, data, message } = await addPortRuleApi(params);
-    
+
     if (success && data) {
       // 添加成功，刷新当前节点的端口规则列表
       await fetchPortRulesByNodeId(currentNodeId.value);
-      
+
       return { success: true, data };
     } else {
       throw new Error(message || '添加端口规则失败');
@@ -1041,14 +1072,14 @@ const updatePortRule = async (ruleId: number, ruleData: any): Promise<any> => {
       permanent: ruleData.permanent,
       description: ruleData.description || ''
     };
-    
+
     // 调用真实API
     const { success, data, message } = await updatePortRuleApi(ruleId, params);
-    
+
     if (success && data) {
       // 更新成功，刷新当前节点的端口规则列表
       await fetchPortRulesByNodeId(currentNodeId.value);
-      
+
       return { success: true, data };
     } else {
       throw new Error(message || '更新端口规则失败');
@@ -1064,11 +1095,11 @@ const deletePortRule = (row: PortRule | null) => {
   if (row === null && selectedPortRows.value.length === 0) {
     return; // 没有选中行，直接返回
   }
-  
-  const message = row 
-    ? `确定要删除端口 ${row.port} 的规则吗？` 
+
+  const message = row
+    ? `确定要删除端口 ${row.port} 的规则吗？`
     : `确定要删除选中的 ${selectedPortRows.value.length} 条规则吗？`;
-  
+
   ElMessageBox.confirm(message, '删除确认', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
@@ -1076,33 +1107,33 @@ const deletePortRule = (row: PortRule | null) => {
   }).then(async () => {
     // 设置加载状态
     loading.value = true;
-    
+
     try {
       // 准备要删除的ID数组
       const ids = row ? [row.id] : selectedPortRows.value.map(item => item.id);
-      
+
       // 如果没有当前节点ID，则无法删除
       if (!currentNodeId.value) {
         throw new Error('未选择节点，无法删除规则');
       }
-      
+
       // 调用真实的删除API
       await deletePortRulesApi(currentNodeId.value, ids);
-      
+
       // 删除成功后刷新列表
       await fetchPortRulesByNodeId(currentNodeId.value);
-      
+
       // 如果是批量删除，清空选择
       if (!row) {
         selectedPortRows.value = [];
       }
-      
+
       // 提示成功
       ElMessage({
         type: 'success',
         message: row ? '删除端口规则成功' : '批量删除端口规则成功'
       });
-      
+
       // 重置加载状态
       loading.value = false;
     } catch (error) {
@@ -1112,7 +1143,7 @@ const deletePortRule = (row: PortRule | null) => {
         type: 'error',
         message: '删除端口规则失败，请重试'
       });
-      
+
       // 重置加载状态
       loading.value = false;
     }
@@ -1124,23 +1155,23 @@ const deletePortRule = (row: PortRule | null) => {
 // 提交表单
 const submitPortRuleForm = async () => {
   if (!portRuleFormRef.value) return;
-  
+
   await portRuleFormRef.value.validate(async (valid, fields) => {
     if (valid) {
       // 设置加载状态
       loading.value = true;
-      
+
       try {
         // 构建提交数据
         const ruleData = {
           ...portRuleForm
         };
-        
+
         // 根据表单模式调用不同的API
         if (formMode.value === 'create') {
           // 调用API添加规则
           await addPortRule(ruleData);
-          
+
           // 提示成功
           ElMessage({
             type: 'success',
@@ -1151,22 +1182,22 @@ const submitPortRuleForm = async () => {
           if (editingRuleId.value === null) {
             throw new Error('未找到要更新的规则ID');
           }
-          
+
           await updatePortRule(editingRuleId.value, ruleData);
-          
+
           // 提示成功
           ElMessage({
             type: 'success',
             message: '端口规则更新成功'
           });
         }
-        
+
         // 关闭抽屉
         portRuleDrawerVisible.value = false;
-        
+
         // 重置表单
         resetPortRuleForm();
-        
+
         // 重置加载状态
         loading.value = false;
       } catch (error) {
@@ -1176,7 +1207,7 @@ const submitPortRuleForm = async () => {
           type: 'error',
           message: formMode.value === 'create' ? '添加端口规则失败，请重试' : '更新端口规则失败，请重试'
         });
-        
+
         // 重置加载状态
         loading.value = false;
       }
@@ -1197,39 +1228,27 @@ const editPortRule = (row: PortRule) => {
   formMode.value = 'edit';
   editingRuleId.value = row.id;
 
-  // 记录原始策略值和类型（便于调试）
+  // 确保类型转换正确
   console.log('编辑 - 原始策略值:', row.strategy, '类型:', typeof row.strategy);
 
   // 2. 准备表单数据并确保策略值类型正确
-  const formData = {
-    protocol: row.protocol.toLowerCase(),
-    port: row.port,
-    sourceType: row.sourceType,
-    sourceAddress: row.sourceAddress,
-    strategy: row.strategy === 'drop' ? 'drop' : 'accept', // 确保是字符串
-    zone: row.zone,
-    family: row.family,
-    permanent: row.permanent,
-    description: row.description
-  };
+  // 确保策略值为字符串类型 'accept' 或 'drop'
+  const strategy = row.strategy === 'drop' ? 'drop' : 'accept';
 
   // 3. 逐个设置表单值，确保响应式更新
-  portRuleForm.protocol = formData.protocol;
-  portRuleForm.port = formData.port;
-  portRuleForm.sourceType = formData.sourceType;
-  portRuleForm.sourceAddress = formData.sourceAddress;
-  portRuleForm.strategy = formData.strategy;
-  portRuleForm.zone = formData.zone;
-  portRuleForm.family = formData.family;
-  portRuleForm.permanent = formData.permanent;
-  portRuleForm.description = formData.description;
-  
+  portRuleForm.protocol = row.protocol.toLowerCase();
+  portRuleForm.port = row.port;
+  portRuleForm.sourceType = row.sourceType;
+  portRuleForm.sourceAddress = row.sourceAddress;
+  portRuleForm.strategy = strategy; // 使用转换后的值
+  portRuleForm.zone = row.zone;
+  portRuleForm.family = row.family;
+  portRuleForm.permanent = row.permanent;
+  portRuleForm.description = row.description;
+
   // 4. 更新渲染计数器强制视图刷新
   forceRender.value += 1;
-  
-  // 打印设置后的策略值（便于调试）
-  console.log('编辑 - 设置后策略值:', portRuleForm.strategy, '类型:', typeof portRuleForm.strategy);
-  
+
   // 5. 打开抽屉
   portRuleDrawerVisible.value = true;
 };
@@ -1306,7 +1325,7 @@ const remoteSearchNodes = (query: string) => {
   if (query) {
     remoteLoading.value = true;
     searchQuery.value = query;
-    
+
     // 模拟搜索延迟
     setTimeout(() => {
       remoteLoading.value = false;
@@ -1319,11 +1338,11 @@ const remoteSearchNodes = (query: string) => {
 // 计算过滤后的节点列表
 const filteredNodeList = computed(() => {
   if (!searchQuery.value) return nodeList.value;
-  
+
   const loweredQuery = searchQuery.value.toLowerCase();
-  return nodeList.value.filter(node => 
-    node.id.toLowerCase().includes(loweredQuery) || 
-    node.name.toLowerCase().includes(loweredQuery) || 
+  return nodeList.value.filter(node =>
+    node.id.toLowerCase().includes(loweredQuery) ||
+    node.name.toLowerCase().includes(loweredQuery) ||
     node.ip.toLowerCase().includes(loweredQuery)
   );
 });
@@ -1333,7 +1352,7 @@ const fetchNodeList = async (): Promise<any> => {
   try {
     loading.value = true;
     const { success, data, message, code } = await fetchNodeListApi();
-    
+
     if (success && data) {
       // 适配API返回的节点数据
       nodeList.value = data.map(node => ({
@@ -1372,21 +1391,21 @@ const fetchPortRulesByNodeId = (nodeId: string): Promise<any> => {
     // 记录当前的分页和筛选状态
     const currentPage = portPagination.currentPage;
     const currentSize = portPagination.pageSize;
-    
+
     // 设置加载状态
     loading.value = true;
-    
+
     // 调用真实API
     apiFetchPortRulesByNodeId(nodeId)
       .then(({ success, data, message }) => {
         if (success && data) {
           // 更新数据
           portRules.value = data;
-          
+
           // 恢复分页状态
           portPagination.currentPage = currentPage;
           portPagination.pageSize = currentSize;
-          
+
           resolve({ success: true, data });
         } else {
           // 显示错误信息
@@ -1412,14 +1431,14 @@ const fetchIpRulesByNodeId = (nodeId: string): Promise<any> => {
     // 记录当前的分页和筛选状态
     const currentPage = ipPagination.currentPage;
     const currentSize = ipPagination.pageSize;
-    
+
     // 设置加载状态
     loading.value = true;
-    
+
     setTimeout(() => {
       // 模拟不同节点有不同数据
       let rules: IPRule[] = [];
-      
+
       if (nodeId === 'node1') {
         rules = [
           { id: 1, address: '192.168.1.100', strategy: 'accept' as 'accept' | 'drop', description: '允许特定主机访问' },
@@ -1442,17 +1461,17 @@ const fetchIpRulesByNodeId = (nodeId: string): Promise<any> => {
           { id: 1, address: '192.168.1.1', strategy: 'accept' as 'accept' | 'drop', description: '默认允许网关' },
         ];
       }
-      
+
       // 更新数据
       ipRules.value = rules;
-      
+
       // 恢复分页状态
       ipPagination.currentPage = currentPage;
       ipPagination.pageSize = currentSize;
-      
+
       // 重置加载状态
       loading.value = false;
-      
+
       resolve({ success: true, data: rules });
     }, 600);
   });
@@ -1464,14 +1483,14 @@ const fetchForwardRulesByNodeId = (nodeId: string): Promise<any> => {
     // 记录当前的分页和筛选状态
     const currentPage = forwardPagination.currentPage;
     const currentSize = forwardPagination.pageSize;
-    
+
     // 设置加载状态
     loading.value = true;
-    
+
     setTimeout(() => {
       // 模拟不同节点有不同数据
       let rules = [];
-      
+
       if (nodeId === 'node1') {
         rules = [
           { id: 1, srcPort: '80', dstPort: '8080', dstAddr: '192.168.1.100', protocol: 'tcp', description: '转发Web流量' },
@@ -1494,17 +1513,17 @@ const fetchForwardRulesByNodeId = (nodeId: string): Promise<any> => {
           { id: 1, srcPort: '22', dstPort: '2222', dstAddr: '10.0.0.1', protocol: 'tcp', description: '默认SSH转发' },
         ];
       }
-      
+
       // 更新数据
       forwardRules.value = rules;
-      
+
       // 恢复分页状态
       forwardPagination.currentPage = currentPage;
       forwardPagination.pageSize = currentSize;
-      
+
       // 重置加载状态
       loading.value = false;
-      
+
       resolve({ success: true, data: rules });
     }, 600);
   });
@@ -1513,10 +1532,10 @@ const fetchForwardRulesByNodeId = (nodeId: string): Promise<any> => {
 // 加载指定节点的数据
 const loadNodeData = async (nodeId: string) => {
   setCurrentNode(nodeId);
-  
+
   // 添加到最近访问
   addToRecentNodes(nodeId);
-  
+
   // 根据当前标签加载不同类型的数据
   if (activeTab.value === 'port') {
     await fetchPortRulesByNodeId(nodeId);
@@ -1538,165 +1557,144 @@ watch(activeTab, (newTab) => {
       fetchForwardRulesByNodeId(currentNodeId.value);
     }
   }
-  
+
   // 如果设置了定时刷新，仍然保留原有逻辑
   if (refreshRate.value !== '不刷新') {
     refreshData();
   }
 });
 
-// 初始化数据和视图同步 - 简化版
+// 初始化数据和视图同步 - 优化版
 const initializeComponent = async () => {
   try {
-    console.log('【初始化】开始初始化组件数据，当前路由:', route.path);
+    console.log('开始初始化防火墙组件数据');
     loading.value = true;
-    
+
     // 预设默认值
     firewallStatus.value = 'not running';
-    firewallName.value = 'FirewallD'; // Or fetch dynamically if possible
+    firewallName.value = 'FirewallD';
     firewallVersion.value = '—';
     pingDisabled.value = true;
     maskShow.value = true;
-    portRules.value = []; // 清空旧规则
+    // 清空旧数据
+    portRules.value = [];
     ipRules.value = [];
     forwardRules.value = [];
-    
+
     // 1. 获取节点列表
-    console.log('【初始化】开始获取节点列表...');
-    const nodeListResult = await fetchNodeListApi(); // Use the correct API function
-    
-    // Fix Linter Error: Access data directly, check if it's an array and not empty
-    if (nodeListResult.code !== 0 || !nodeListResult.data || !Array.isArray(nodeListResult.data) || nodeListResult.data.length === 0) {
-      console.warn('【初始化】未获取到节点列表或节点列表为空', nodeListResult);
+    const nodeListResult = await fetchNodeListApi();
+
+    if (!nodeListResult.success || !nodeListResult.data || !Array.isArray(nodeListResult.data) || nodeListResult.data.length === 0) {
       ElMessage({
         type: 'warning',
         message: '未获取到可用节点，部分功能将不可用'
       });
-      // Reset node list even on failure
-      nodeList.value = []; 
-      recentNodes.value = []; // Also clear recent nodes if list fails
+      // 重置节点相关数据
+      nodeList.value = [];
+      recentNodes.value = [];
       currentNodeId.value = '';
       currentNodeName.value = '';
       currentNodeIp.value = '';
-      loading.value = false; // Ensure loading is false before returning
-      return; 
+      loading.value = false;
+      return;
     }
-    
-    // 更新节点列表 (Fix Linter Error: data is the array)
-    // Define a minimal type inline if AgentNode is not exported or available
-    type LocalAgentNode = { nodeId?: string, nodeName?: string, nodeIp?: string }; 
-    nodeList.value = nodeListResult.data.map((node: LocalAgentNode) => ({
+
+    // 更新节点列表
+    nodeList.value = nodeListResult.data.map((node: any) => ({
       id: node.nodeId || '',
       name: node.nodeName || '',
       ip: node.nodeIp || ''
     }));
-    console.log(`【初始化】获取到${nodeList.value.length}个节点`);
-    
-    // 加载最近访问节点 (should be done after fetching full list)
-    loadRecentNodes(); 
-    
+
+    // 加载最近访问节点
+    loadRecentNodes();
+
     // 2. 确定初始节点
     let initialNodeId = '';
-    // ... (existing logic for determining initialNodeId) ...
+
     if (route.query.nodeId) {
       initialNodeId = route.query.nodeId as string;
-      console.log('【初始化】从URL参数中获取节点ID:', initialNodeId);
     } else if (recentNodes.value.length > 0 && nodeList.value.some(n => n.id === recentNodes.value[0].id)) {
-      // Ensure recent node still exists in the current list
+      // 确保最近节点仍存在于当前列表
       initialNodeId = recentNodes.value[0].id;
-      console.log('【初始化】使用最近访问的节点ID:', initialNodeId);
     } else if (nodeList.value.length > 0) {
       initialNodeId = nodeList.value[0].id;
-      console.log('【初始化】使用第一个节点ID:', initialNodeId);
     }
-    
+
     if (!initialNodeId) {
-      console.warn('【初始化】无法确定初始节点ID');
-      loading.value = false; // Ensure loading is false
+      loading.value = false;
       return;
     }
-    
+
     // 3. 设置当前节点
     const currentNode = nodeList.value.find(n => n.id === initialNodeId);
     if (!currentNode) {
-      console.warn('【初始化】未找到对应节点:', initialNodeId);
-       // Try the first node if the initial ID wasn't found (e.g., from stale recent list)
+      // 如果未找到对应节点，尝试使用第一个节点
       if (nodeList.value.length > 0) {
-        initialNodeId = nodeList.value[0].id;
         const firstNode = nodeList.value[0];
         currentNodeId.value = firstNode.id;
         currentNodeName.value = firstNode.name;
         currentNodeIp.value = firstNode.ip;
-        console.log('【初始化】回退到使用第一个节点:', firstNode);
-        addToRecentNodes(firstNode.id); // Add the fallback node to recent list
+        addToRecentNodes(firstNode.id);
       } else {
-        loading.value = false; // Ensure loading is false
+        loading.value = false;
         return;
       }
     } else {
       currentNodeId.value = currentNode.id;
       currentNodeName.value = currentNode.name;
       currentNodeIp.value = currentNode.ip;
-      console.log('【初始化】已设置当前节点:', currentNode);
       // 添加到最近访问
-      addToRecentNodes(currentNode.id); 
+      addToRecentNodes(currentNode.id);
     }
 
     // 4. 获取防火墙状态
-    console.log('【初始化】开始获取防火墙状态...');
-    const statusResult = await fetchFirewallStatusApi(currentNodeId.value); // Use current node ID
-    
-    if (statusResult.code === 0 && statusResult.data) {
-      // ... (existing logic for setting firewall status) ...
+    const statusResult = await fetchFirewallStatusApi(currentNodeId.value);
+
+    if (statusResult.success && statusResult.data) {
       firewallStatus.value = statusResult.data.status;
       firewallName.value = statusResult.data.name;
       firewallVersion.value = statusResult.data.version;
-      
+
+      // 设置Ping响应状态
       const shouldDisablePing = statusResult.data.pingStatus === 'Disable';
-      console.log('【初始化】Ping状态:', statusResult.data.pingStatus, '设置pingDisabled为:', shouldDisablePing);
       pingDisabled.value = shouldDisablePing;
-      
+
+      // 设置遮罩显示状态
       maskShow.value = statusResult.data.status !== 'running';
-      console.log('【初始化】防火墙状态:', firewallStatus.value, '设置maskShow为:', maskShow.value);
     } else {
-      console.warn('【初始化】获取防火墙状态失败:', statusResult);
       ElMessage({
         type: 'warning',
         message: '获取防火墙状态失败，请刷新页面重试'
       });
-      // Don't return here, allow rules fetching attempt if needed
     }
-    
+
     // 5. 如果防火墙运行中，加载当前标签页的规则
     if (firewallStatus.value === 'running') {
-      console.log('【初始化】防火墙运行中，开始加载规则...');
       try {
         if (activeTab.value === 'port') {
-          await fetchPortRulesByNodeId(currentNodeId.value); // Use current node ID
+          await fetchPortRulesByNodeId(currentNodeId.value);
         } else if (activeTab.value === 'ip') {
-           await fetchIpRulesByNodeId(currentNodeId.value); // Use current node ID
+          await fetchIpRulesByNodeId(currentNodeId.value);
         } else if (activeTab.value === 'forward') {
-           await fetchForwardRulesByNodeId(currentNodeId.value); // Use current node ID
+          await fetchForwardRulesByNodeId(currentNodeId.value);
         }
       } catch (dataError) {
-        console.error('【初始化】加载规则数据失败:', dataError);
+        console.error('加载规则数据失败:', dataError);
       }
     } else {
-       console.log('【初始化】防火墙未运行，跳过加载规则');
-       // Clear rules if firewall is not running
-       portRules.value = [];
-       ipRules.value = [];
-       forwardRules.value = [];
+      // 如果防火墙未运行，确保规则数据为空
+      portRules.value = [];
+      ipRules.value = [];
+      forwardRules.value = [];
     }
-    
-    console.log('【初始化】初始化完成');
   } catch (error) {
-    console.error('【初始化】组件初始化失败:', error);
+    console.error('组件初始化失败:', error);
     ElMessage({
       type: 'error',
       message: '加载数据失败，请刷新页面重试'
     });
-    // Reset state on major failure
+    // 重置状态
     nodeList.value = [];
     recentNodes.value = [];
     currentNodeId.value = '';
@@ -1707,10 +1705,8 @@ const initializeComponent = async () => {
     forwardRules.value = [];
     firewallStatus.value = 'not running';
     maskShow.value = true;
-
   } finally {
     loading.value = false;
-    console.log('【状态更新】初始化结束，loading=false');
   }
 };
 
@@ -1720,7 +1716,7 @@ onActivated(() => {
   // 根据 KeepAlive 状态决定是否需要刷新数据或恢复状态
   // 当前 API 配置 keepAlive: false，此钩子理论上不执行或无需特殊处理
   // 若未来启用 KeepAlive，在此处添加必要的状态恢复或数据刷新逻辑, e.g., restart refreshTimer if applicable
-  
+
   // Example if KeepAlive were active and refresh is needed:
   // if (currentNodeId.value) {
   //   console.log('【onActivated】重新激活，刷新防火墙状态和当前标签页数据');
@@ -1731,35 +1727,32 @@ onActivated(() => {
 
 onDeactivated(() => {
   console.log('【onDeactivated】防火墙组件被停用');
-  // 清除定时器等副作用
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-    refreshTimer = null;
-    console.log('【onDeactivated】已清除 refreshTimer');
-  }
-  // 若未来启用 KeepAlive，在此处添加必要的暂停逻辑
+  // 清理逻辑移至 onUnmounted，这里不再清除定时器
 });
 
 onUnmounted(() => {
   console.log('【onUnmounted】防火墙组件被卸载，彻底清理');
-  
-  // 【新增】检查DOM清理状态
-  console.log('【DEBUG】防火墙组件DOM状态:', 
-    document.querySelector('.firewall-container') ? '组件DOM仍存在' : '组件DOM已移除');
-  
-  // 【新增】检查全局状态
-  console.log('【DEBUG】全局window对象上是否有组件相关状态:', 
-    Object.keys(window).filter(key => key.includes('firewall') || key.includes('agent')));
-  
-  // 确保清除所有定时器和副作用
+
+  // 清除所有定时器和副作用
   if (refreshTimer) {
     clearInterval(refreshTimer);
     refreshTimer = null;
     console.log('【onUnmounted】已清除 refreshTimer');
   }
-  
-  // 其他可能的清理...
-  console.log('【DEBUG】组件卸载完成');
+
+  // 清除Ping切换超时保护
+  if (pingToggleTimeout) {
+    clearTimeout(pingToggleTimeout);
+    pingToggleTimeout = null;
+  }
+
+  // 清除会话存储中的防火墙访问标记
+  sessionStorage.removeItem('visited_firewall');
+
+  // 移除可能的事件监听器
+  window.removeEventListener('beforeunload', () => {});
+
+  console.log('【onUnmounted】组件资源已完全清理');
 });
 
 onMounted(async () => {
@@ -1767,7 +1760,7 @@ onMounted(async () => {
   // 添加会话存储标记，表示已访问防火墙页面
   sessionStorage.setItem('visited_firewall', 'true');
   console.log('【DEBUG】已设置防火墙访问标记');
-  
+
   // 初始化组件数据
   try {
     await initializeComponent();
@@ -1779,17 +1772,17 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   console.log('【onBeforeUnmount】防火墙组件即将卸载');
-  // 可以在这里进行最终的清理，但 onUnmounted 通常更适合
+  // 清理逻辑已集中到 onUnmounted，此处不再需要额外清理代码
 });
 </script>
 
 <template>
-  <!-- 
+  <!--
     防火墙组件 - 简化状态管理，移除 pageReady 和 componentMounted 控制。
     依赖 v-loading 显示加载状态。
     如果 KeepAlive 实际生效，Vue 会处理状态保持。
   -->
-  <div class="firewall-container" v-loading="loading">
+  <div class="firewall-container" v-loading="loading" id="firewall-container">
     <!-- 防火墙状态信息 -->
     <div class="app-status mb-4">
       <!-- ... (防火墙状态卡片内容不变) ... -->
@@ -1798,7 +1791,7 @@ onBeforeUnmount(() => {
           <div class="flex flex-wrap gap-4">
             <el-tag effect="dark" type="success" v-if="firewallName">{{ firewallName }}</el-tag>
             <el-tag effect="dark" type="info" v-else>未知防火墙</el-tag>
-            
+
             <el-tag round v-if="firewallStatus === 'running'" type="success">
               运行中
             </el-tag>
@@ -1808,7 +1801,7 @@ onBeforeUnmount(() => {
             <el-tag round v-else type="warning">
               状态未知
             </el-tag>
-            
+
             <el-tag v-if="firewallVersion">版本: {{ firewallVersion }}</el-tag>
             <el-tag v-else type="info">版本未知</el-tag>
           </div>
@@ -1829,13 +1822,13 @@ onBeforeUnmount(() => {
               <el-tag size="small" type="success" v-if="!pingDisabled" class="ml-1">开启</el-tag>
               <el-tag size="small" type="danger" v-else class="ml-1">关闭</el-tag>
             </el-button>
-            <el-switch 
-              size="small" 
-              class="ml-2" 
-              v-model="pingDisabled" 
-              active-color="#ff4949" 
+            <el-switch
+              size="small"
+              class="ml-2"
+              v-model="pingDisabled"
+              active-color="#ff4949"
               inactive-color="#13ce66"
-              @change="togglePing" 
+              @change="togglePing"
               @click.native.stop
               :disabled="firewallStatus !== 'running'"
             />
@@ -1852,17 +1845,17 @@ onBeforeUnmount(() => {
             <div class="flex items-center gap-4 flex-wrap mb-2 md:mb-0">
               <el-tag type="info" v-if="currentNodeId">节点ID: {{ currentNodeId }}</el-tag>
               <el-tag type="info" v-else>未选择节点</el-tag>
-              
+
               <el-tag type="info" v-if="currentNodeName">主机名: {{ currentNodeName }}</el-tag>
               <el-tag type="info" v-else>—</el-tag>
-              
+
               <el-tag type="info" v-if="currentNodeIp">IP地址: {{ currentNodeIp }}</el-tag>
               <el-tag type="info" v-else>—</el-tag>
             </div>
             <div style="width: 280px">
-              <el-select 
-                v-model="currentNodeId" 
-                placeholder="搜索或选择节点" 
+              <el-select
+                v-model="currentNodeId"
+                placeholder="搜索或选择节点"
                 style="width: 100%"
                 filterable
                 remote
@@ -1888,7 +1881,7 @@ onBeforeUnmount(() => {
                   </el-option-group>
                   <el-divider style="margin: 5px 0" />
                 </template>
-                
+
                 <el-option-group label="所有节点" v-if="nodeList.length > 0">
                   <el-option
                     v-for="node in filteredNodeList"
@@ -1902,7 +1895,7 @@ onBeforeUnmount(() => {
                     </div>
                   </el-option>
                 </el-option-group>
-                
+
                 <el-option v-if="nodeList.length === 0 && !remoteLoading" disabled value="">
                   <span style="color: #999">暂无可用节点</span>
                 </el-option>
@@ -2030,7 +2023,7 @@ onBeforeUnmount(() => {
                             <span class="port-detail-value">
                               {{ row.portUsageDetails[0].protocol ? row.portUsageDetails[0].protocol.toUpperCase() : '' }}
                             </span>
-                            </div>                        
+                            </div>
                             <div class="port-detail-item">
                               <span class="port-detail-label">进程:</span>
                               <span class="port-detail-value">{{ row.portUsageDetails[0].processName }}</span>
@@ -2054,7 +2047,7 @@ onBeforeUnmount(() => {
                         </template>
                       </el-popover>
                     </div>
-                    
+
                     <!-- 区间端口或多个端口 -->
                     <div v-else-if="row.port.includes('-') || row.port.includes(',')">
                       <div v-if="row.usedStatus === 'inUsed' && row.portUsageDetails?.length" class="status-with-info">
@@ -2065,12 +2058,12 @@ onBeforeUnmount(() => {
                           <template #default>
                             <div class="used-ports-list">
                               <div class="used-ports-list-title">已使用端口:</div>
-                              
+
                               <!-- 当使用端口数量小于等于10个，直接全部展示 -->
                               <div v-if="row.portUsageDetails.length <= 10" class="used-ports-grid">
                                 <div
-                                  v-for="(item, index) in row.portUsageDetails" 
-                                  :key="index" 
+                                  v-for="(item, index) in row.portUsageDetails"
+                                  :key="index"
                                   class="port-usage-item"
                                 >
                                 <div class="port-process">
@@ -2084,7 +2077,7 @@ onBeforeUnmount(() => {
                                 </div>
                                 </div>
                               </div>
-                              
+
                               <!-- 当使用端口数量大于10个，使用下拉菜单 -->
                               <div v-else class="port-usage-dropdown">
                                 <div class="select-wrapper">
@@ -2097,7 +2090,7 @@ onBeforeUnmount(() => {
                                     />
                                   </el-select>
                                 </div>
-                                
+
                                 <!-- 选择端口后展示详情 -->
                                 <div v-if="selectedPort" class="port-detail-card mt-3">
                                   <div class="port-detail-title">端口使用详情</div>
@@ -2139,7 +2132,7 @@ onBeforeUnmount(() => {
                         <el-tag type="success" v-else>未使用</el-tag>
                       </div>
                     </div>
-                    
+
                     <!-- 默认情况 -->
                     <div v-else>
                       <el-tag type="info" v-if="row.usedStatus === 'inUsed'">已使用</el-tag>
@@ -2363,7 +2356,7 @@ onBeforeUnmount(() => {
             </el-card>
         </el-tab-pane>
       </el-tabs>
-      
+
       <!-- 如果防火墙未运行，显示提示卡片 -->
       <el-card v-if="firewallStatus !== 'running' && maskShow" class="mask-prompt mb-4">
         <span>防火墙未启动</span>
@@ -2386,9 +2379,9 @@ onBeforeUnmount(() => {
             <span class="drawer-title">{{ formMode === 'create' ? '创建规则' : '编辑规则' }}</span>
           </div>
         </template>
-        <el-form 
-          ref="portRuleFormRef" 
-          :model="portRuleForm" 
+        <el-form
+          ref="portRuleFormRef"
+          :model="portRuleForm"
           :rules="portRuleFormRules"
           label-width="80px"
           class="port-rule-form"
@@ -2412,9 +2405,9 @@ onBeforeUnmount(() => {
               <el-radio label="any">所有 IP</el-radio>
               <el-radio label="specific">指定 IP</el-radio>
             </el-radio-group>
-            <el-input 
-              v-if="portRuleForm.sourceType === 'specific'" 
-              v-model="portRuleForm.sourceAddress" 
+            <el-input
+              v-if="portRuleForm.sourceType === 'specific'"
+              v-model="portRuleForm.sourceAddress"
               placeholder="请输入IP地址"
               class="mt-2 w-full"
             ></el-input>
@@ -2468,9 +2461,9 @@ onBeforeUnmount(() => {
             <el-switch v-model="portRuleForm.permanent"></el-switch>
           </el-form-item>
           <el-form-item label="描述" prop="description">
-            <el-input 
-              v-model="portRuleForm.description" 
-              type="textarea" 
+            <el-input
+              v-model="portRuleForm.description"
+              type="textarea"
               placeholder="请输入描述信息"
               :rows="3"
             ></el-input>
@@ -2486,285 +2479,44 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
-<style scoped>
-.firewall-container {
-  width: 100%;
-}
-.mb-4 {
-  margin-bottom: 1rem;
-}
-.ml-2 {
-  margin-left: 0.5rem;
-}
-.mt-4 {
-  margin-top: 1rem;
-}
-.mt-3 {
-  margin-top: 0.75rem;
-}
-.p-w-200 {
-  width: 200px;
-}
-.p-w-150 {
-  width: 150px;
-}
-.mask {
-  position: relative;
-  opacity: 0.6;
-  pointer-events: none;
+<style>
+/*
+ * 防火墙组件样式已移至全局样式文件:
+ * - src/styles/firewall-preload.css (预加载基础样式)
+ * - src/styles/firewall.css (完整样式)
+ *
+ * 这里只保留组件特有的样式，其他样式通过全局样式文件加载
+ */
+
+/* 组件特有样式 - 这些样式只在此组件中使用，不适合放在全局样式中 */
+.drawer-header {
+  display: flex !important;
+  align-items: center !important;
 }
 
-.mask::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(255, 255, 255, 0.5);
-  z-index: 10;
+.drawer-back-icon {
+  margin-right: 10px !important;
+  cursor: pointer !important;
 }
 
-/* 加载占位符样式 */
-.loading-placeholder {
-  min-height: 400px;
+.drawer-title {
+  font-size: 16px !important;
+  font-weight: bold !important;
 }
 
-.flx-align-center {
-  display: flex;
-  align-items: center;
-}
-.svg-icon {
-  margin-left: 0.25rem;
-  cursor: pointer;
-}
-.info-icon {
-  margin-left: 6px;
-  cursor: pointer;
-  font-size: 16px;
-  color: #409eff;
-  transition: color 0.2s;
-}
-.info-icon:hover {
-  color: #66b1ff;
-}
-.status-with-info {
-  display: flex;
-  align-items: center;
-}
-.flex {
-  display: flex;
-}
-.justify-between {
-  justify-content: space-between;
-}
-.justify-end {
-  justify-content: flex-end;
-}
-.gap-2 {
-  gap: 0.5rem;
-}
-.flex-wrap {
-  flex-wrap: wrap;
-}
-.gap-3 {
-  gap: 0.75rem;
-}
-.w-full {
-  width: 100%;
-}
-.mt-0\.5 {
-  margin-top: 0.125rem;
-}
-.mask-prompt {
-  text-align: center;
-  padding: 1rem;
-  background-color: #fef0f0;
-  color: #f56c6c;
-}
-.used-ports-list {
-  padding: 5px;
-}
-.used-ports-list-title {
-  font-weight: bold;
-  margin-bottom: 10px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 5px;
-}
-.used-ports-list-content {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-.used-port-tag {
-  margin: 3px;
+.drawer-footer {
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 10px !important;
 }
 
-/* 新增样式 - 端口使用详情 */
-.port-detail-card {
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 12px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  background-color: #fff;
+.form-tips {
+  font-size: 12px !important;
+  color: #909399 !important;
+  margin-top: 5px !important;
+  line-height: 1.5 !important;
 }
 
-.port-detail-title {
-  font-weight: bold;
-  font-size: 14px;
-  margin-bottom: 10px;
-  color: #303133;
-  border-bottom: 1px solid #ebeef5;
-  padding-bottom: 8px;
-}
-
-.port-detail-item {
-  display: flex;
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-
-.port-detail-label {
-  color: #606266;
-  width: 75px;
-  flex-shrink: 0;
-}
-
-.port-detail-value {
-  color: #303133;
-  flex-grow: 1;
-  word-break: break-word;
-}
-
-.port-detail-value.command-line {
-  font-family: monospace;
-  background-color: #f5f7fa;
-  padding: 2px 4px;
-  border-radius: 3px;
-  font-size: 12px;
-}
-
-.used-ports-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-
-.port-usage-item {
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 6px 10px;
-  background-color: #f5f7fa;
-}
-
-.port-process {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.port-number {
-  font-weight: bold;
-  color: #409EFF;
-}
-
-.process-name {
-  font-family: monospace;
-  color: #67C23A;
-  font-size: 12px;
-}
-
-.port-usage-dropdown {
-  display: flex;
-  flex-direction: column;
-}
-
-.select-wrapper {
-  margin-bottom: 10px;
-}
-
-/* 增强型选择器样式 */
-.el-select-dropdown__item {
-  padding: 0 15px;
-}
-.el-option-group__title {
-  font-size: 12px;
-  font-weight: bold;
-  color: #909399;
-  padding: 10px 15px 5px;
-}
-.items-center {
-  align-items: center;
-}
-.justify-between {
-  justify-content: space-between;
-}
-.el-divider--horizontal {
-  margin: 8px 0;
-}
-@media (min-width: 768px) {
-  .md\:flex-row {
-    flex-direction: row;
-  }
-}
-/* 自定义单选按钮样式 */
-.custom-radio-group {
-  display: flex;
-  align-items: center;
-}
-.custom-radio {
-  position: relative;
-  margin-right: 30px;
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-.custom-radio input[type="radio"] {
-  opacity: 0;
-  position: absolute;
-}
-.custom-radio label {
-  position: relative;
-  padding-left: 25px;
-  cursor: pointer;
-  line-height: 1;
-  font-weight: 500;
-}
-.custom-radio label:before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 14px;
-  height: 14px;
-  border: 1px solid #dcdfe6;
-  border-radius: 50%;
-  background-color: #fff;
-  transition: all 0.15s;
-}
-.custom-radio.is-active label:before {
-  border-color: #409eff;
-  background-color: #409eff;
-}
-.custom-radio.is-active label:after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: #fff;
-}
-
-/* 调试面板样式 */
-.debug-info {
-  font-family: monospace;
-  line-height: 1.5;
-  transition: opacity 0.3s;
-}
-
-.debug-info:hover {
-  opacity: 1 !important;
-}
-</style> 
+/* 确保在页面刷新时也能正确应用样式 */
+@import url('../styles/firewall.css');
+</style>

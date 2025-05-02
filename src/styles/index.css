@@ -2,8 +2,12 @@
 @import url('transition.css');
 @import url('nprogress.css');
 @import url('color.css');
+/* 防火墙预加载样式放在全局样式之前，确保它能在页面加载时立即应用 */
+@import url('firewall-preload.css');
 @import url('global.css');
 @import url('common.css');
 @import url('layout.css');
 @import url('rest.css');
+/* 防火墙完整样式放在最后，确保它能覆盖其他样式 */
+@import url('firewall.css');
 

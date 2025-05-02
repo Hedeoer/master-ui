@@ -1,0 +1,290 @@
+/** 防火墙组件专用样式 - 高优先级版本 */
+
+/* 确保防火墙组件的样式能够正确加载 */
+.firewall-container {
+  width: 100% !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  font-family: var(--el-font-family) !important;
+  color: var(--el-text-color-primary) !important;
+}
+
+/* 基础布局样式 */
+.firewall-container .mb-4 {
+  margin-bottom: 1rem !important;
+}
+.firewall-container .ml-2 {
+  margin-left: 0.5rem !important;
+}
+.firewall-container .mt-4 {
+  margin-top: 1rem !important;
+}
+.firewall-container .p-w-200 {
+  width: 200px !important;
+}
+.firewall-container .flex {
+  display: flex !important;
+}
+.firewall-container .justify-between {
+  justify-content: space-between !important;
+}
+.firewall-container .justify-end {
+  justify-content: flex-end !important;
+}
+.firewall-container .gap-2 {
+  gap: 0.5rem !important;
+}
+.firewall-container .flex-wrap {
+  flex-wrap: wrap !important;
+}
+.firewall-container .w-full {
+  width: 100% !important;
+}
+.firewall-container .items-center {
+  align-items: center !important;
+}
+
+/* 表格样式 - 强制覆盖 */
+.firewall-container .el-table {
+  --el-table-border-color: var(--el-border-color-lighter) !important;
+  --el-table-header-bg-color: var(--el-fill-color-light) !important;
+  --el-table-row-hover-bg-color: var(--el-fill-color) !important;
+  width: 100% !important;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+}
+
+.firewall-container .el-table th.el-table__cell {
+  background-color: var(--el-fill-color-light) !important;
+  color: var(--el-text-color-primary) !important;
+  font-weight: bold !important;
+  padding: 12px 0 !important;
+  border-bottom: 1px solid var(--el-border-color-lighter) !important;
+}
+
+.firewall-container .el-table td.el-table__cell {
+  padding: 12px 0 !important;
+  border-bottom: 1px solid var(--el-border-color-lighter) !important;
+}
+
+/* 卡片样式 - 强制覆盖 */
+.firewall-container .el-card {
+  --el-card-border-color: var(--el-border-color-lighter) !important;
+  --el-card-border-radius: 6px !important;
+  margin-bottom: 16px !important;
+  box-shadow: var(--el-box-shadow-light) !important;
+  border: 1px solid var(--el-border-color-lighter) !important;
+}
+
+.firewall-container .el-card__body {
+  padding: 20px !important;
+}
+
+/* 标签样式 - 强制覆盖 */
+.firewall-container .el-tag {
+  --el-tag-border-radius: 4px !important;
+  margin-right: 8px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 24px !important;
+  padding: 0 8px !important;
+  font-size: 12px !important;
+}
+
+/* 按钮样式 - 强制覆盖 */
+.firewall-container .el-button {
+  --el-button-border-radius: 4px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  height: 32px !important;
+  white-space: nowrap !important;
+  cursor: pointer !important;
+  color: var(--el-button-text-color) !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+  outline: none !important;
+  transition: .1s !important;
+  font-weight: var(--el-button-font-weight) !important;
+  user-select: none !important;
+  vertical-align: middle !important;
+  -webkit-appearance: none !important;
+  background-color: var(--el-button-bg-color) !important;
+  border: var(--el-border) !important;
+  border-color: var(--el-button-border-color) !important;
+  padding: 8px 15px !important;
+  font-size: var(--el-font-size-base) !important;
+  border-radius: var(--el-button-border-radius) !important;
+}
+
+/* 表单样式 - 强制覆盖 */
+.firewall-container .el-form-item {
+  margin-bottom: 18px !important;
+}
+
+.firewall-container .el-form-item__label {
+  font-size: 14px !important;
+  color: var(--el-text-color-regular) !important;
+  line-height: 32px !important;
+  padding: 0 12px 0 0 !important;
+  box-sizing: border-box !important;
+}
+
+.firewall-container .el-form-item__content {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  flex: 1 !important;
+  line-height: 32px !important;
+  position: relative !important;
+  font-size: 14px !important;
+  min-width: 0 !important;
+}
+
+/* 输入框样式 - 强制覆盖 */
+.firewall-container .el-input {
+  position: relative !important;
+  font-size: 14px !important;
+  display: inline-flex !important;
+  width: 100% !important;
+  line-height: 32px !important;
+}
+
+.firewall-container .el-input__wrapper {
+  display: inline-flex !important;
+  flex-grow: 1 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1px 11px !important;
+  background-color: var(--el-input-bg-color, var(--el-fill-color-blank)) !important;
+  background-image: none !important;
+  border-radius: var(--el-input-border-radius, var(--el-border-radius-base)) !important;
+  transition: var(--el-transition-box-shadow) !important;
+  box-shadow: 0 0 0 1px var(--el-input-border-color, var(--el-border-color)) inset !important;
+}
+
+/* 选择器样式 - 强制覆盖 */
+.firewall-container .el-select {
+  width: 100% !important;
+  display: inline-block !important;
+  position: relative !important;
+}
+
+/* 分页样式 - 强制覆盖 */
+.firewall-container .el-pagination {
+  margin-top: 16px !important;
+  justify-content: flex-end !important;
+  display: flex !important;
+  align-items: center !important;
+  font-weight: normal !important;
+  color: var(--el-text-color-primary) !important;
+  font-size: 14px !important;
+}
+
+/* 标签页样式 - 强制覆盖 */
+.firewall-container .el-tabs {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.firewall-container .el-tabs__header {
+  padding: 0 !important;
+  position: relative !important;
+  margin: 0 0 15px !important;
+}
+
+.firewall-container .el-tabs__nav-wrap {
+  overflow: hidden !important;
+  margin-bottom: -1px !important;
+  position: relative !important;
+}
+
+.firewall-container .el-tabs__nav {
+  white-space: nowrap !important;
+  position: relative !important;
+  transition: transform .3s !important;
+  float: left !important;
+  display: flex !important;
+}
+
+.firewall-container .el-tabs__item {
+  padding: 0 20px !important;
+  height: 40px !important;
+  box-sizing: border-box !important;
+  line-height: 40px !important;
+  display: inline-block !important;
+  list-style: none !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: var(--el-text-color-primary) !important;
+  position: relative !important;
+}
+
+/* 确保遮罩层样式正确 - 强制覆盖 */
+.mask {
+  position: relative !important;
+  opacity: 0.6 !important;
+  pointer-events: none !important;
+}
+
+.mask::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background-color: rgba(255, 255, 255, 0.5) !important;
+  z-index: 10 !important;
+}
+
+/* 自定义单选按钮样式 */
+.custom-radio-group {
+  display: flex !important;
+  align-items: center !important;
+}
+.custom-radio {
+  position: relative !important;
+  margin-right: 30px !important;
+  display: flex !important;
+  align-items: center !important;
+  cursor: pointer !important;
+}
+.custom-radio input[type="radio"] {
+  opacity: 0 !important;
+  position: absolute !important;
+}
+.custom-radio label {
+  position: relative !important;
+  padding-left: 25px !important;
+  cursor: pointer !important;
+  line-height: 1 !important;
+  font-weight: 500 !important;
+}
+.custom-radio label:before {
+  content: "" !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 14px !important;
+  height: 14px !important;
+  border: 1px solid #dcdfe6 !important;
+  border-radius: 50% !important;
+  background-color: #fff !important;
+  transition: all 0.15s !important;
+}
+.custom-radio.is-active label:before {
+  border-color: #409eff !important;
+  background-color: #409eff !important;
+}
+.custom-radio.is-active label:after {
+  content: "" !important;
+  position: absolute !important;
+  left: 4px !important;
+  top: 4px !important;
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background-color: #fff !important;
+}
