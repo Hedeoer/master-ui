@@ -773,6 +773,47 @@ const portRuleFormRef = ref<FormInstance>();
 const formMode = ref<'create' | 'edit'>('create');
 const editingRuleId = ref<number | null>(null);
 const forceRender = ref(0); // 用于强制渲染表单组件的计数器
+
+// 检测IP地址类型的辅助函数
+const detectIpType = (ipAddressStr: string): 'ipv4' | 'ipv6' | 'ipv4/ipv6' => {
+  if (!ipAddressStr || ipAddressStr === '0.0.0.0') {
+    return 'ipv4/ipv6'; // 默认返回两者都支持
+  }
+
+  // 定义IPv4和IPv6的正则表达式
+  const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/;
+  const ipv6Pattern = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)$/;
+
+  // 分割多个IP地址
+  const ipAddresses = ipAddressStr.split(',').map(ip => ip.trim());
+  let hasIpv4 = false;
+  let hasIpv6 = false;
+
+  // 检查每个IP地址
+  for (const ip of ipAddresses) {
+    if (ipv4Pattern.test(ip)) {
+      hasIpv4 = true;
+    } else if (ipv6Pattern.test(ip)) {
+      hasIpv6 = true;
+    }
+    
+    // 如果同时存在IPv4和IPv6，提前返回
+    if (hasIpv4 && hasIpv6) {
+      return 'ipv4/ipv6';
+    }
+  }
+
+  // 根据检测结果返回类型
+  if (hasIpv4 && !hasIpv6) {
+    return 'ipv4';
+  } else if (!hasIpv4 && hasIpv6) {
+    return 'ipv6';
+  } else {
+    // 默认返回两者都支持
+    return 'ipv4/ipv6';
+  }
+};
+
 const portRuleForm = reactive({
   protocol: 'tcp',
   port: '',
@@ -790,9 +831,22 @@ watch(() => portRuleForm.sourceType, (newType) => {
   // 当类型变为 any 时，将 sourceAddress 设置为 0.0.0.0
   if (newType === 'any') {
     portRuleForm.sourceAddress = '0.0.0.0';
+    // 当来源为所有IP时，IP类型只能为IPv4/IPv6
+    portRuleForm.family = 'ipv4/ipv6';
   } else if (newType === 'specific' && portRuleForm.sourceAddress === '0.0.0.0') {
     // 当类型变为 specific 且当前地址是 0.0.0.0 时，清空地址，便于用户输入
     portRuleForm.sourceAddress = '';
+    // 初始设置为IPv4/IPv6，后续会根据用户输入的IP地址自动调整
+    portRuleForm.family = 'ipv4/ipv6';
+  }
+});
+
+// 监听 sourceAddress 变化
+watch(() => portRuleForm.sourceAddress, (newAddress) => {
+  // 只有当来源类型为 specific 时才自动判断IP类型
+  if (portRuleForm.sourceType === 'specific' && newAddress) {
+    // 使用辅助函数检测IP地址类型并自动设置family
+    portRuleForm.family = detectIpType(newAddress);
   }
 });
 
@@ -1680,7 +1734,7 @@ onMounted(async () => {
                 <el-option label="全部" value=""></el-option>
                 <el-option label="IPv4" value="ipv4"></el-option>
                 <el-option label="IPv6" value="ipv6"></el-option>
-                <el-option label="IPv4/IPv6" value="both"></el-option>
+                <el-option label="IPv4/IPv6" value="ipv4/ipv6"></el-option>
               </el-select>
               <el-select v-model="portSearchStatus" @change="applyPortFilter" clearable class="p-w-150 ml-2">
                 <template #prefix>状态</template>
@@ -1739,7 +1793,7 @@ onMounted(async () => {
                 <template #default="{ row }">
                   <el-tag type="info" v-if="row.family === 'ipv4'">IPv4</el-tag>
                   <el-tag type="success" v-else-if="row.family === 'ipv6'">IPv6</el-tag>
-                  <el-tag type="warning" v-else-if="row.family === 'both'">IPv4/IPv6</el-tag>
+                  <el-tag type="warning" v-else-if="row.family === 'ipv4/ipv6'">IPv4/IPv6</el-tag>
                 </template>
               </el-table-column>
               <el-table-column label="协议" prop="protocol" width="100" />
@@ -2191,10 +2245,10 @@ onMounted(async () => {
           </el-select>
         </el-form-item>
         <el-form-item label="IP类型" prop="family">
-          <el-select v-model="portRuleForm.family" class="w-full" :disabled="formMode === 'edit'">
+          <el-select v-model="portRuleForm.family" class="w-full" disabled>
             <el-option label="IPv4" value="ipv4"></el-option>
             <el-option label="IPv6" value="ipv6"></el-option>
-            <el-option label="IPv4/IPv6" value="both"></el-option>
+            <el-option label="IPv4/IPv6" value="ipv4/ipv6"></el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="持久化" prop="permanent">
