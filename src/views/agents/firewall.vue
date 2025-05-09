@@ -1521,6 +1521,9 @@ const loadNodeData = async (nodeId: string) => {
 
   // 添加到最近访问
   addToRecentNodes(nodeId);
+  
+  // 获取防火墙状态信息
+  await fetchFirewallStatus();
 
   // 根据当前标签加载不同类型的数据
   if (activeTab.value === 'port') {
