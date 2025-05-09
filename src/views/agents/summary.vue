@@ -254,7 +254,7 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
         <template #cpuUsage="{ row }">
           <el-progress
             :percentage="row.cpuUsage"
-            :status="row.cpuUsage > 80 ? 'exception' : row.cpuUsage > 60 ? 'warning' : ''"
+            :color="(percentage) => (percentage > 90 ? '#F56C6C' : percentage > 80 ? '#E6A23C' : '#67C23A')"
             :stroke-width="10"
             :show-text="true"
           />
@@ -263,7 +263,7 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
         <template #memoryUsage="{ row }">
           <el-progress
             :percentage="row.memoryUsage"
-            :status="row.memoryUsage > 80 ? 'exception' : row.memoryUsage > 60 ? 'warning' : ''"
+            :color="(percentage) => (percentage > 90 ? '#F56C6C' : percentage > 80 ? '#E6A23C' : '#67C23A')"
             :stroke-width="10"
             :show-text="true"
           />
@@ -272,7 +272,7 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
         <template #diskUsage="{ row }">
           <el-progress
             :percentage="row.diskUsage"
-            :status="row.diskUsage > 80 ? 'exception' : row.diskUsage > 60 ? 'warning' : ''"
+            :color="(percentage) => (percentage > 90 ? '#F56C6C' : percentage > 80 ? '#E6A23C' : '#67C23A')"
             :stroke-width="10"
             :show-text="true"
           />
