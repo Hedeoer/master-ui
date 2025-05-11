@@ -7,6 +7,8 @@ enum Api {
   Detail = '/agents/node/detail',
   Operation = '/agents/node/operation',
   Refresh = '/agents/node/refresh',
+  PublicKey = '/agents/node/public-key',
+  CheckAgent = '/agents/node/check-agent',
 }
 
 /**
@@ -49,5 +51,39 @@ export function operateNodeApi(param: NodeOperationParam) {
 export function refreshNodeStatusApi(param: NodeRefreshParam) {
   return request.post<ApiResult<boolean>>(Api.Refresh, {
     data: param,
+  })
+}
+
+/**
+ * 获取主机公钥
+ * @returns 公钥字符串
+ */
+export function getHostPublicKeyApi() {
+  return request.get<ApiResult<string>>(Api.PublicKey)
+}
+
+/**
+ * 客户端状态检查参数
+ */
+export interface CheckAgentParams {
+  /** 客户端-用户名 */
+  serverUserName: string
+  /** 主机/IP */
+  sshServerIpOrHostName: string
+  /** 端口 */
+  sshServerPort: number | string
+  /** 公钥 */
+  publicKey: string
+}
+
+/**
+ * 检查客户端运行状态
+ * @param params 客户端信息参数
+ * @returns 检查结果
+ */
+export function checkAgentRunningStatusApi(params: CheckAgentParams) {
+  return request.post<ApiResult<boolean>>(Api.CheckAgent, {
+    data: params,
+    repeatSubmit: false // 防止重复提交
   })
 } 

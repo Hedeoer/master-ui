@@ -2,7 +2,7 @@
 // 导入必要的类型和工具
 import type { PageParam } from '~/types/global'
 import type { AgentNode } from '~/types/agents/node'
-import { pageNodeApi, refreshNodeStatusApi, operateNodeApi } from '~/api/agents/node'
+import { pageNodeApi, refreshNodeStatusApi, operateNodeApi, getHostPublicKeyApi, checkAgentRunningStatusApi, type CheckAgentParams } from '~/api/agents/node'
 
 // 定义组件名称，与路由name保持一致
 defineOptions({
@@ -330,11 +330,136 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
     }
   })
 }
+
+// 添加客户端弹窗相关状态
+const addClientDialogVisible = ref(false)
+const clientTab = ref('docker')
+const clientForm = reactive({
+  name: '',
+  host: '',
+  port: 45876,
+  pubkey: 'ssh-ed25519 AAAAC3NzaC1ZDI1NTE5...'
+})
+
+// 获取主机公钥，带1小时缓存
+async function getHostPublicKey(): Promise<string> {
+  const CACHE_KEY = 'zeta_host_public_key'
+  const CACHE_DURATION = 60 * 60 * 1000 // 1小时
+  const now = Date.now()
+  try {
+    const cacheRaw = localStorage.getItem(CACHE_KEY)
+    if (cacheRaw) {
+      const cache = JSON.parse(cacheRaw)
+      if (cache.publicKey && cache.timestamp && now - cache.timestamp < CACHE_DURATION) {
+        return cache.publicKey
+      }
+    }
+    // 发送网络请求
+    const { code, data, message } = await getHostPublicKeyApi()
+    if (code === 0 && typeof data === 'string' && !!data) {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ publicKey: data, timestamp: now }))
+      return data
+    } else {
+      notifyError(message || '获取主机公钥失败')
+      return ''
+    }
+  } catch (e) {
+    notifyError('获取主机公钥异常')
+    return ''
+  }
+}
+
+// 打开添加客户端弹窗时，获取公钥
+async function openAddClientDialog() {
+  addClientDialogVisible.value = true
+  clientForm.name = ''
+  clientForm.host = ''
+  clientForm.port = 45876
+  clientForm.pubkey = ''
+  const pubkey = await getHostPublicKey()
+  if (pubkey) clientForm.pubkey = pubkey
+}
+
+function closeAddClientDialog() {
+  addClientDialogVisible.value = false
+}
+
+function copyCommand() {
+  const command: string = clientTab.value === 'docker' ? 'docker-compose.yml内容' : 'Linux安装命令内容'
+  if ((window as any).navigator && (window as any).navigator.clipboard) {
+    (window as any).navigator.clipboard.writeText(command)
+    toastSuccess('命令已复制')
+  } else {
+    notifyError('当前浏览器不支持剪贴板操作')
+  }
+}
+
+function copyPubkey() {
+  if ((window as any).navigator && (window as any).navigator.clipboard) {
+    (window as any).navigator.clipboard.writeText(clientForm.pubkey)
+    toastSuccess('公钥已复制')
+  } else {
+    notifyError('当前浏览器不支持剪贴板操作')
+  }
+}
+
+async function addClient() {
+  // 添加客户端逻辑
+  setLoading(true)
+  try {
+    // 构造请求参数
+    const params: CheckAgentParams = {
+      serverUserName: clientForm.name,
+      sshServerIpOrHostName: clientForm.host,
+      sshServerPort: clientForm.port,
+      publicKey: clientForm.pubkey
+    }
+    
+    // 发送检查请求
+    const { code, message, data } = await checkAgentRunningStatusApi(params)
+    
+    if (code === 0) {
+      // 成功情况
+      toastSuccess(message || '客户端状态检查成功')
+      closeAddClientDialog()
+      // 刷新表格数据
+      fetchTableData()
+    } else {
+      // 失败情况
+      notifyError(message || '客户端状态检查失败')
+    }
+  } catch (error) {
+    console.error('添加客户端异常:', error)
+    notifyError('添加客户端异常')
+  } finally {
+    setLoading(false)
+  }
+}
+
+const isClientFormValid = computed(() => {
+  const portNum = Number(clientForm.port)
+  return (
+    !!clientForm.name &&
+    !!clientForm.host &&
+    !!clientForm.port &&
+    !!clientForm.pubkey &&
+    Number.isInteger(portNum) &&
+    portNum >= 1024 &&
+    portNum <= 65535
+  )
+})
 </script>
 
 <template>
   <div class="z-container">
     <div class="z-table-box">
+      <div class="z-table-toolbar-opt" style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 10px;">
+        <el-button type="primary" :loading="isRefreshing" :disabled="isRefreshing" @click="refreshNodeStatus">
+          <el-icon><i-ep-refresh /></el-icon>
+          刷新状态
+        </el-button>
+        <el-button type="primary" @click="openAddClientDialog" icon="el-icon-plus">+ 添加客户端</el-button>
+      </div>
       <e-table
         :loading="loading"
         :page="page"
@@ -347,15 +472,6 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
       >
         <!-- 工具栏 -->
         <template #toolbar>
-          <el-button
-            type="primary"
-            :loading="isRefreshing"
-            :disabled="isRefreshing"
-            @click="refreshNodeStatus"
-          >
-            <el-icon><i-ep-refresh /></el-icon>
-            刷新状态
-          </el-button>
           <div v-if="isRefreshing" class="refresh-progress">
             <el-progress 
               :percentage="totalRefreshProgress"
@@ -443,6 +559,36 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
         </template>
       </e-table>
     </div>
+    <!-- 添加客户端弹窗 -->
+    <el-dialog v-model="addClientDialogVisible" title="添加新客户端" width="400px" :close-on-click-modal="false" @close="closeAddClientDialog">
+      <el-tabs v-model="clientTab" stretch>
+        <el-tab-pane label="Docker" name="docker"></el-tab-pane>
+        <el-tab-pane label="二进制" name="binary"></el-tab-pane>
+      </el-tabs>
+      <div style="margin-bottom: 8px; color: #888; font-size: 13px;">
+        必须在系统上运行客户端之后才能连接。复制下面的 <span v-if="clientTab==='docker'">docker-compose.yml</span><span v-else>客户端安装命令</span>。
+      </div>
+      <el-form :model="clientForm" label-width="120px" style="margin-top: 8px;">
+        <el-form-item label="客户端-用户名">
+          <el-input v-model="clientForm.name" placeholder="请输入用户名" />
+        </el-form-item>
+        <el-form-item label="主机/IP">
+          <el-input v-model="clientForm.host" placeholder="请输入主机或IP地址" />
+        </el-form-item>
+        <el-form-item label="端口">
+          <el-input v-model="clientForm.port" placeholder="请输入端口" />
+        </el-form-item>
+        <el-form-item label="公钥">
+          <el-input v-model="clientForm.pubkey" readonly suffix-icon="el-icon-document-copy" @click="copyPubkey" />
+        </el-form-item>
+      </el-form>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+        <el-button @click="copyCommand" plain :disabled="!isClientFormValid">
+          复制{{ clientTab==='docker' ? 'docker compose' : 'Linux安装命令' }}
+        </el-button>
+        <el-button type="primary" @click="addClient" :disabled="!isClientFormValid">添加客户端</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
