@@ -63,6 +63,7 @@ declare module 'vue' {
     ETable: typeof import('./components/ETable.vue')['default']
     IEpArrowDown: typeof import('~icons/ep/arrow-down')['default']
     IEpCheck: typeof import('~icons/ep/check')['default']
+    IEpClose: typeof import('~icons/ep/close')['default']
     IEpDelete: typeof import('~icons/ep/delete')['default']
     IEpEdit: typeof import('~icons/ep/edit')['default']
     IEpExpand: typeof import('~icons/ep/expand')['default']

@@ -15,6 +15,94 @@ const { loading, setLoading } = useLoading(true)
 // 表格数据
 const dataSource = ref<AgentNode[]>([])
 
+// 刷新状态管理
+interface RefreshState {
+  status: 'pending' | 'refreshing' | 'success' | 'error'
+  progress: number
+}
+const refreshStates = ref<Map<string, RefreshState>>(new Map())
+const isRefreshing = ref(false)
+
+// 更新节点刷新状态
+function updateNodeRefreshState(nodeId: string, state: Partial<RefreshState>) {
+  const currentState = refreshStates.value.get(nodeId) || { status: 'pending', progress: 0 }
+  refreshStates.value.set(nodeId, { ...currentState, ...state })
+}
+
+// 重置所有节点刷新状态
+function resetRefreshStates() {
+  refreshStates.value.clear()
+  dataSource.value.forEach(node => {
+    if (node.nodeId) {
+      refreshStates.value.set(node.nodeId, { status: 'pending', progress: 0 })
+    }
+  })
+}
+
+// 计算总体刷新进度
+const totalRefreshProgress = computed(() => {
+  if (refreshStates.value.size === 0) return 0
+  const total = Array.from(refreshStates.value.values()).reduce((sum, state) => sum + state.progress, 0)
+  return Math.round(total / refreshStates.value.size)
+})
+
+// 计算刷新状态
+const refreshStatus = computed(() => {
+  if (!isRefreshing.value) return 'idle'
+  if (totalRefreshProgress.value === 100) return 'success'
+  return 'refreshing'
+})
+
+// 排序状态管理
+interface SortState {
+  prop: string
+  order: 'ascending' | 'descending' | null
+}
+const sortState = ref<SortState>({
+  prop: '',
+  order: null
+})
+
+// 排序后的数据
+const sortedData = computed(() => {
+  if (!sortState.value.prop || !sortState.value.order) {
+    return dataSource.value
+  }
+
+  return [...dataSource.value].sort((a, b) => {
+    const aValue = a[sortState.value.prop as keyof AgentNode]
+    const bValue = b[sortState.value.prop as keyof AgentNode]
+
+    // 处理数值类型
+    if (typeof aValue === 'number' && typeof bValue === 'number') {
+      return sortState.value.order === 'ascending' ? aValue - bValue : bValue - aValue
+    }
+
+    // 处理字符串类型
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortState.value.order === 'ascending' 
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue)
+    }
+
+    // 处理日期类型
+    if (sortState.value.prop === 'lastHeartbeat') {
+      const dateA = new Date(aValue as string).getTime()
+      const dateB = new Date(bValue as string).getTime()
+      return sortState.value.order === 'ascending' ? dateA - dateB : dateB - dateA
+    }
+
+    return 0
+  })
+})
+
+// 分页后的数据
+const paginatedData = computed(() => {
+  const start = (page.value.current - 1) * page.value.limit
+  const end = start + page.value.limit
+  return sortedData.value.slice(start, end)
+})
+
 // 表格分页器配置
 const page = ref({
   total: 0,
@@ -117,14 +205,13 @@ async function fetchTableData(param?: PageParam<AgentNode>) {
   setLoading(true)
   try {
     // 调用API获取数据
-    const { success, data, message } = await pageNodeApi(param || { page: page.value.current, limit: page.value.limit })
+    const { success, data, message } = await pageNodeApi(param || { page: 1, limit: page.value.limit })
     
     if (success && data) {
-      // 修改分页器数据
-      if (param && param.page) page.value.current = param.page
-      page.value.total = Number(data.count || 0)
       // 表格数据赋值
       dataSource.value = data.list || []
+      // 更新总数
+      page.value.total = dataSource.value.length
     } else {
       notifyError(message || '获取节点列表失败')
     }
@@ -141,43 +228,67 @@ fetchTableData()
 
 /** 分页事件 */
 function changePage(data: any) {
-  const param = {
-    page: data.current,
-    limit: data.limit,
-  }
-  fetchTableData(param)
+  page.value.current = data.current
+  page.value.limit = data.limit
+  // 更新总数
+  page.value.total = sortedData.value.length
 }
 
 /** 排序事件 */
-function changeSort(data: any) {
-  const param = {
-    page: page.value.current,
-    limit: page.value.limit,
-    sort: data.prop,
-    order: data.order,
+function changeSort(data: { prop: string; order: 'ascending' | 'descending' | null }) {
+  sortState.value = {
+    prop: data.prop,
+    order: data.order
   }
-  fetchTableData(param)
 }
 
 /** 刷新节点状态 */
 async function refreshNodeStatus() {
+  if (isRefreshing.value) return
+  
+  isRefreshing.value = true
+  resetRefreshStates()
+  
   // 1. 从当前表格数据中提取所有节点ID
   const allNodeIds = dataSource.value
-    .map(node => node.nodeId) // 提取 nodeId
-    .filter(id => id !== undefined) as string[]; // 过滤掉可能存在的 undefined 值并断言类型
+    .map(node => node.nodeId)
+    .filter(id => id !== undefined) as string[]
 
   try {
     // 2. 将包含所有节点ID的数组传递给API
-    const { success, message } = await refreshNodeStatusApi({ nodeIds: allNodeIds });
+    const { success, message } = await refreshNodeStatusApi({ nodeIds: allNodeIds })
+    
     if (success) {
+      // 模拟进度更新
+      for (const nodeId of allNodeIds) {
+        updateNodeRefreshState(nodeId, { status: 'refreshing', progress: 0 })
+        // 模拟进度更新
+        for (let i = 0; i <= 100; i += 20) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+          updateNodeRefreshState(nodeId, { progress: i })
+        }
+        updateNodeRefreshState(nodeId, { status: 'success', progress: 100 })
+      }
+      
       // 状态刷新成功后，重新获取表格数据以显示最新状态
-      fetchTableData();
-      toastSuccess('刷新成功');
+      await fetchTableData()
+      toastSuccess('刷新成功')
     } else {
-      notifyError(message || '刷新失败');
+      allNodeIds.forEach(nodeId => {
+        updateNodeRefreshState(nodeId, { status: 'error', progress: 0 })
+      })
+      notifyError(message || '刷新失败')
     }
   } catch (error) {
-    notifyError((error as Error).message || '刷新失败');
+    allNodeIds.forEach(nodeId => {
+      updateNodeRefreshState(nodeId, { status: 'error', progress: 0 })
+    })
+    notifyError((error as Error).message || '刷新失败')
+  } finally {
+    setTimeout(() => {
+      isRefreshing.value = false
+      resetRefreshStates()
+    }, 1000)
   }
 }
 
@@ -228,7 +339,7 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
         :loading="loading"
         :page="page"
         :columns="columns"
-        :data-source="dataSource"
+        :data-source="paginatedData"
         :default-toolbar="defaultToolbar"
         height="500px"
         @change="changePage"
@@ -238,17 +349,42 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
         <template #toolbar>
           <el-button
             type="primary"
+            :loading="isRefreshing"
+            :disabled="isRefreshing"
             @click="refreshNodeStatus"
           >
             <el-icon><i-ep-refresh /></el-icon>
             刷新状态
           </el-button>
+          <div v-if="isRefreshing" class="refresh-progress">
+            <el-progress 
+              :percentage="totalRefreshProgress"
+              :status="refreshStatus === 'success' ? 'success' : ''"
+              :stroke-width="10"
+            />
+          </div>
         </template>
         <!-- 节点状态 -->
         <template #nodeStatus="{ row }">
-          <el-tag :type="row.nodeStatus === 'online' ? 'success' : 'danger'">
-            {{ row.nodeStatus === 'online' ? '在线' : '离线' }}
-          </el-tag>
+          <div class="node-status">
+            <el-tag :type="row.nodeStatus === 'online' ? 'success' : 'danger'">
+              {{ row.nodeStatus === 'online' ? '在线' : '离线' }}
+            </el-tag>
+            <div v-if="isRefreshing && row.nodeId" class="refresh-indicator">
+              <el-progress
+                v-if="refreshStates.get(row.nodeId)?.status === 'refreshing'"
+                :percentage="refreshStates.get(row.nodeId)?.progress || 0"
+                :stroke-width="4"
+                :show-text="false"
+              />
+              <el-icon v-else-if="refreshStates.get(row.nodeId)?.status === 'success'" class="success-icon">
+                <i-ep-check />
+              </el-icon>
+              <el-icon v-else-if="refreshStates.get(row.nodeId)?.status === 'error'" class="error-icon">
+                <i-ep-close />
+              </el-icon>
+            </div>
+          </div>
         </template>
         <!-- CPU利用率 -->
         <template #cpuUsage="{ row }">
@@ -315,5 +451,46 @@ function handleNodeOperation(type: OperationType, nodeId: string) {
 .el-progress {
   width: 100%;
   margin: 0;
+}
+
+.refresh-progress {
+  margin-top: 10px;
+  width: 200px;
+}
+
+.node-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh-indicator {
+  width: 40px;
+  height: 4px;
+  position: relative;
+}
+
+.success-icon {
+  color: var(--el-color-success);
+  font-size: 16px;
+}
+
+.error-icon {
+  color: var(--el-color-danger);
+  font-size: 16px;
+}
+
+/* 添加刷新动画 */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.el-icon.is-loading {
+  animation: spin 1s linear infinite;
 }
 </style>
