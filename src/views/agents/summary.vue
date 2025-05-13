@@ -2,7 +2,8 @@
 // 导入必要的类型和工具
 import type { PageParam } from '~/types/global'
 import type { AgentNode } from '~/types/agents/node'
-import { pageNodeApi, refreshNodeStatusApi, operateNodeApi, getHostPublicKeyApi, checkAgentRunningStatusApi, type CheckAgentParams } from '~/api/agents/node'
+import { pageNodeApi, refreshNodeStatusApi, operateNodeApi, getHostPublicKeyApi, checkAgentRunningStatusApi, type CheckAgentParams, batchDeleteNodeApi } from '~/api/agents/node'
+import { useRouter } from 'vue-router'
 
 // 定义组件名称，与路由name保持一致
 defineOptions({
@@ -12,8 +13,22 @@ defineOptions({
 // 使用loading状态
 const { loading, setLoading } = useLoading(true)
 
+// 初始化router实例
+const router = useRouter()
+
+// 导航到防火墙页面
+function navigateToFirewall(nodeId: string) {
+  router.push({
+    path: '/agents/firewall',
+    query: { nodeId }
+  })
+}
+
 // 表格数据
 const dataSource = ref<AgentNode[]>([])
+
+// 选中的行
+const selectedKeys = ref<string[]>([])
 
 // 刷新状态管理
 interface RefreshState {
@@ -115,6 +130,12 @@ const defaultToolbar = ref(true)
 
 // 表格列定义
 const columns = [
+  {
+    type: 'selection',
+    width: '50px',
+    fixed: 'left',
+    title: '',
+  },
   {
     title: '#',
     type: 'index',
@@ -448,6 +469,59 @@ const isClientFormValid = computed(() => {
     portNum <= 65535
   )
 })
+
+/** 表格多选事件 */
+function changeSelection(data: AgentNode[] | undefined) {
+  if (!data) return
+  selectedKeys.value = data.map(item => item.nodeId as string).filter(Boolean)
+}
+
+/** 处理批量删除 */
+async function handleBatchDelete(nodeIdsOrEvent?: string[] | MouseEvent) {
+  // 判断参数类型
+  let targetNodeIds: string[] = [];
+  
+  if (!nodeIdsOrEvent) {
+    // 如果没有传参数，使用当前选中的节点
+    targetNodeIds = selectedKeys.value;
+  } else if (Array.isArray(nodeIdsOrEvent)) {
+    // 如果传入的是数组，直接使用
+    targetNodeIds = nodeIdsOrEvent;
+  } else {
+    // 如果传入的是事件对象，使用当前选中的节点
+    targetNodeIds = selectedKeys.value;
+  }
+  
+  // 参数校验
+  if (targetNodeIds.length === 0) {
+    toastWarn('请选择要删除的节点')
+    return
+  }
+
+  // 准备确认消息
+  const confirmMessage = targetNodeIds.length === 1 
+    ? '确定要删除该节点吗？' 
+    : `确定要删除这${targetNodeIds.length}个节点吗？`
+
+  confirmMsg(confirmMessage, {}, async () => {
+    try {
+      // 批量删除
+      const { success, message } = await batchDeleteNodeApi(targetNodeIds)
+      if (!success) {
+        toastError(message || '删除失败')
+        return
+      }
+
+      toastSuccess(message || '删除成功')
+      // 重新获取表格数据
+      fetchTableData()
+      // 清空选择
+      selectedKeys.value = []
+    } catch (err) {
+      notifyError((err as Error).message, '错误')
+    }
+  })
+}
 </script>
 
 <template>
@@ -469,15 +543,24 @@ const isClientFormValid = computed(() => {
         height="500px"
         @change="changePage"
         @sort-change="changeSort"
+        @selection-change="changeSelection"
       >
         <!-- 工具栏 -->
         <template #toolbar>
-          <div v-if="isRefreshing" class="refresh-progress">
-            <el-progress 
-              :percentage="totalRefreshProgress"
-              :status="refreshStatus === 'success' ? 'success' : ''"
-              :stroke-width="10"
-            />
+          <div class="toolbar-container" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div>
+              <el-button type="danger" :disabled="selectedKeys.length === 0" @click="handleBatchDelete">
+                <el-icon><i-ep-delete /></el-icon>
+                批量删除
+              </el-button>
+            </div>
+            <div v-if="isRefreshing" class="refresh-progress">
+              <el-progress 
+                :percentage="totalRefreshProgress"
+                :status="refreshStatus === 'success' ? 'success' : ''"
+                :stroke-width="10"
+              />
+            </div>
           </div>
         </template>
         <!-- 节点状态 -->
@@ -538,8 +621,24 @@ const isClientFormValid = computed(() => {
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item @click="handleNodeOperation('detail', row.nodeId)">
-                  <el-icon><i-ep-view /></el-icon> 详情
+                <el-dropdown-item>
+                  <el-dropdown placement="bottom-start" trigger="hover" popper-class="node-detail-dropdown" :hide-timeout="500">
+                    <div style="display: flex; align-items: center; width: 100%;">
+                      <el-icon><i-ep-view /></el-icon>
+                      <span style="margin-left: 5px;">详情</span>
+                      <el-icon style="margin-left: auto;"><i-ep-arrow-down /></el-icon>
+                    </div>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click="handleNodeOperation('detail', row.nodeId)">
+                          <el-icon><i-ep-document /></el-icon> 基本信息
+                        </el-dropdown-item>
+                        <el-dropdown-item @click="navigateToFirewall(row.nodeId)" :disabled="row.nodeStatus !== 'online'">
+                          <el-icon><i-ep-monitor /></el-icon> 防火墙
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </el-dropdown-item>
                 <el-dropdown-item 
                   :disabled="row.nodeStatus !== 'online'"
@@ -638,5 +737,14 @@ const isClientFormValid = computed(() => {
 
 .el-icon.is-loading {
   animation: spin 1s linear infinite;
+}
+
+/* 嵌套下拉菜单样式 */
+:deep(.node-detail-dropdown) {
+  margin-top: 5px;
+}
+
+:deep(.el-dropdown-menu__item) {
+  justify-content: flex-start;
 }
 </style>

@@ -39,13 +39,8 @@ function reloadPage() {
     <!-- 面包屑 -->
     <Breadcrumb v-if="isPC && themeStore.settings.showBreadcrumb" class="the-nav-item" />
 
-    <!-- 通告栏 -->
-    <div class="the-nav-item" style="flex: auto;">
-      <el-alert title="页面数据为 Mock 示例数据，非真实数据。" type="info" show-icon />
-    </div>
-
     <!-- 占位 -->
-    <!-- <div style="flex: auto;" /> -->
+    <div style="flex: auto;" />
 
     <!-- 系统功能 -->
     <div class="end-nav">

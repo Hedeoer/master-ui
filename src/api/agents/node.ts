@@ -9,6 +9,8 @@ enum Api {
   Refresh = '/agents/node/refresh',
   PublicKey = '/agents/node/public-key',
   CheckAgent = '/agents/node/check-agent',
+  Batch = '/agents/node/batch',
+  Delete = '/agents/node/delete',
 }
 
 /**
@@ -86,4 +88,25 @@ export function checkAgentRunningStatusApi(params: CheckAgentParams) {
     data: params,
     repeatSubmit: false // 防止重复提交
   })
+}
+
+/**
+ * 批量删除节点
+ * @param nodeIds 节点ID数组
+ * @returns 删除结果
+ */
+export function batchDeleteNodeApi(nodeIds: string[]) {
+  return request.delete<ApiResult<boolean>>(Api.Batch, {
+    data: nodeIds,
+    repeatSubmit: false // 防止重复提交
+  })
+}
+
+/**
+ * 删除节点
+ * @param nodeId 节点ID
+ * @returns 删除结果
+ */
+export function deleteNodeApi(nodeId: string) {
+  return request.delete<ApiResult<boolean>>(`${Api.Delete}/${nodeId}`)
 } 

@@ -32,6 +32,7 @@ declare global {
   const cacheTabs: typeof import('./store/modules/tab')['cacheTabs']
   const captchaApi: typeof import('./api/login')['captchaApi']
   const changeUserPasswordApi: typeof import('./api/system/user')['changeUserPasswordApi']
+  const checkAgentRunningStatusApi: typeof import('./api/agents/node')['checkAgentRunningStatusApi']
   const clearCachedTabs: typeof import('./store/modules/tab')['clearCachedTabs']
   const computed: typeof import('vue')['computed']
   const computedAsync: typeof import('@vueuse/core')['computedAsync']
@@ -79,6 +80,7 @@ declare global {
   const getDictApi: typeof import('./api/system/dict')['getDictApi']
   const getDictItemApi: typeof import('./api/system/dictItem')['getDictItemApi']
   const getFileApi: typeof import('./api/system/file')['getFileApi']
+  const getHostPublicKeyApi: typeof import('./api/agents/node')['getHostPublicKeyApi']
   const getLoginLogApi: typeof import('./api/system/loginLog')['getLoginLogApi']
   const getNodeDetailApi: typeof import('./api/agents/node')['getNodeDetailApi']
   const getOptLogApi: typeof import('./api/system/optLog')['getOptLogApi']
@@ -434,6 +436,9 @@ declare global {
   export type { PortRule, FirewallStatus, PortRuleSubmitParams } from './api/agents/firewall'
   import('./api/agents/firewall')
   // @ts-ignore
+  export type { CheckAgentParams } from './api/agents/node'
+  import('./api/agents/node')
+  // @ts-ignore
   export type { LottieParams } from './hooks/lottie'
   import('./hooks/lottie')
 }
@@ -468,6 +473,7 @@ declare module 'vue' {
     readonly cacheTabs: UnwrapRef<typeof import('./store/modules/tab')['cacheTabs']>
     readonly captchaApi: UnwrapRef<typeof import('./api/login')['captchaApi']>
     readonly changeUserPasswordApi: UnwrapRef<typeof import('./api/system/user')['changeUserPasswordApi']>
+    readonly checkAgentRunningStatusApi: UnwrapRef<typeof import('./api/agents/node')['checkAgentRunningStatusApi']>
     readonly clearCachedTabs: UnwrapRef<typeof import('./store/modules/tab')['clearCachedTabs']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
@@ -515,6 +521,7 @@ declare module 'vue' {
     readonly getDictApi: UnwrapRef<typeof import('./api/system/dict')['getDictApi']>
     readonly getDictItemApi: UnwrapRef<typeof import('./api/system/dictItem')['getDictItemApi']>
     readonly getFileApi: UnwrapRef<typeof import('./api/system/file')['getFileApi']>
+    readonly getHostPublicKeyApi: UnwrapRef<typeof import('./api/agents/node')['getHostPublicKeyApi']>
     readonly getLoginLogApi: UnwrapRef<typeof import('./api/system/loginLog')['getLoginLogApi']>
     readonly getNodeDetailApi: UnwrapRef<typeof import('./api/agents/node')['getNodeDetailApi']>
     readonly getOptLogApi: UnwrapRef<typeof import('./api/system/optLog')['getOptLogApi']>

@@ -1649,10 +1649,19 @@ onMounted(async () => {
     <div class="node-info mb-4">
       <el-card>
         <div class="flex justify-between items-center">
-          <div class="flex items-center gap-4">
-            <el-tag type="info">节点ID: {{ currentNodeId }}</el-tag>
-            <el-tag type="info">主机名: {{ currentNodeName }}</el-tag>
-            <el-tag type="info">IP地址: {{ currentNodeIp }}</el-tag>
+          <div class="node-info-tags">
+            <div class="node-info-item">
+              <span class="node-info-label">节点ID</span>
+              <el-tag effect="light" type="primary" class="node-info-value">{{ currentNodeId }}</el-tag>
+            </div>
+            <div class="node-info-item">
+              <span class="node-info-label">主机名</span>
+              <el-tag effect="light" type="success" class="node-info-value">{{ currentNodeName }}</el-tag>
+            </div>
+            <div class="node-info-item">
+              <span class="node-info-label">IP地址</span>
+              <el-tag effect="light" type="warning" class="node-info-value">{{ currentNodeIp }}</el-tag>
+            </div>
           </div>
           <div style="width: 280px">
             <el-select
@@ -1714,7 +1723,7 @@ onMounted(async () => {
             <el-alert type="info" :closable="false" class="mb-4">
               <template #default>
                 <span class="flx-align-center">
-                  <span>防火墙端口规则管理, 用于控制入站/出站流量</span>
+                  <span>防火墙端口规则管理, 用于控制入站流量</span>
                   <el-link style="font-size: 12px; margin-left: 5px" :icon="Position" type="primary">
                     查看文档
                   </el-link>
@@ -2527,5 +2536,31 @@ onMounted(async () => {
   height: 6px;
   border-radius: 50%;
   background-color: #fff;
+}
+
+/* 节点信息卡片样式 */
+.node-info-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.node-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-info-label {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 500;
+}
+
+.node-info-value {
+  min-width: 120px;
+  text-align: center;
+  font-weight: 500;
+  padding: 6px 12px;
 }
 </style>
