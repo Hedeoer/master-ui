@@ -1250,9 +1250,11 @@ const route = useRoute();
 const currentNodeId = ref<string>('');
 const currentNodeName = ref<string>('');
 const currentNodeIp = ref<string>('');
-const nodeList = ref<Array<{id: string, name: string, ip: string}>>([]);
+const currentNodeStatus = ref<'online' | 'offline'>('offline'); // 当前节点状态
+const nodeOfflineMask = ref(false); // 节点离线遮罩控制
+const nodeList = ref<Array<{id: string, name: string, ip: string, status?: 'online' | 'offline'}>>([]);
 // 添加新的状态来管理最近访问的节点
-const recentNodes = ref<Array<{id: string, name: string, ip: string}>>([]);
+const recentNodes = ref<Array<{id: string, name: string, ip: string, status?: 'online' | 'offline'}>>([]);
 const searchQuery = ref('');
 const remoteLoading = ref(false);
 const maxRecentNodes = 5; // 最多保存5个最近访问节点
@@ -1290,7 +1292,12 @@ const addToRecentNodes = (nodeId: string) => {
   }
 
   // 在列表开头添加节点
-  recentNodes.value.unshift(node);
+  recentNodes.value.unshift({
+    id: node.id,
+    name: node.name,
+    ip: node.ip,
+    status: node.status
+  });
 
   // 如果超过最大数量，移除最后一个
   if (recentNodes.value.length > maxRecentNodes) {
@@ -1342,7 +1349,8 @@ const fetchNodeList = async (): Promise<any> => {
         nodeList.value = data.map(node => ({
         id: node.nodeId || '',
         name: node.nodeName || '',
-        ip: node.nodeIp || ''
+        ip: node.nodeIp || '',
+        status: node.nodeStatus as 'online' | 'offline' || 'offline'
       }));
       return { success: true, data: nodeList.value };
     } else {
@@ -1368,6 +1376,10 @@ const setCurrentNode = (nodeId: string) => {
     currentNodeId.value = node.id;
     currentNodeName.value = node.name;
     currentNodeIp.value = node.ip;
+    currentNodeStatus.value = node.status || 'offline';
+    
+    // 根据节点状态设置遮罩
+    nodeOfflineMask.value = currentNodeStatus.value === 'offline';
   }
 };
 
@@ -1525,13 +1537,15 @@ const loadNodeData = async (nodeId: string) => {
   // 获取防火墙状态信息
   await fetchFirewallStatus();
 
-  // 根据当前标签加载不同类型的数据
-  if (activeTab.value === 'port') {
-    await fetchPortRulesByNodeId(nodeId);
-  } else if (activeTab.value === 'ip') {
-    await fetchIpRulesByNodeId(nodeId);
-  } else if (activeTab.value === 'forward') {
-    await fetchForwardRulesByNodeId(nodeId);
+  // 只有当节点在线且防火墙运行时，才加载数据
+  if (currentNodeStatus.value === 'online' && firewallStatus.value === 'running') {
+    if (activeTab.value === 'port') {
+      await fetchPortRulesByNodeId(nodeId);
+    } else if (activeTab.value === 'ip') {
+      await fetchIpRulesByNodeId(nodeId);
+    } else if (activeTab.value === 'forward') {
+      await fetchForwardRulesByNodeId(nodeId);
+    }
   }
 };
 
@@ -1587,8 +1601,8 @@ onMounted(async () => {
       // 获取防火墙状态信息
       await fetchFirewallStatus();
 
-      // 如果防火墙正在运行，加载节点数据
-      if (firewallStatus.value === 'running') {
+      // 如果节点在线且防火墙正在运行，加载节点数据
+      if (currentNodeStatus.value === 'online' && firewallStatus.value === 'running') {
         await loadNodeData(initialNodeId);
       }
     }
@@ -1600,6 +1614,17 @@ onMounted(async () => {
     });
   } finally {
     loading.value = false;
+  }
+});
+
+// 监听节点状态变化
+watch(() => currentNodeStatus.value, (newStatus) => {
+  if (newStatus === 'online') {
+    // 如果节点状态变为在线，更新遮罩
+    nodeOfflineMask.value = false;
+  } else {
+    // 如果节点状态变为离线，显示遮罩
+    nodeOfflineMask.value = true;
   }
 });
 </script>
@@ -1662,6 +1687,16 @@ onMounted(async () => {
               <span class="node-info-label">IP地址</span>
               <el-tag effect="light" type="warning" class="node-info-value">{{ currentNodeIp }}</el-tag>
             </div>
+            <div class="node-info-item">
+              <span class="node-info-label">状态</span>
+              <el-tag 
+                :type="currentNodeStatus === 'online' ? 'success' : 'danger'" 
+                effect="light" 
+                class="node-info-value"
+              >
+                {{ currentNodeStatus === 'online' ? '在线' : '离线' }}
+              </el-tag>
+            </div>
           </div>
           <div style="width: 280px">
             <el-select
@@ -1686,7 +1721,15 @@ onMounted(async () => {
                   >
                     <div class="flex items-center justify-between">
                       <span>{{ node.name }}</span>
-                      <el-tag size="small" type="info">{{ node.ip }}</el-tag>
+                      <div class="flex items-center">
+                        <el-tag size="small" type="info" style="margin-right: 4px;">{{ node.ip }}</el-tag>
+                        <el-tag 
+                          size="small" 
+                          :type="node.status === 'online' ? 'success' : 'danger'"
+                        >
+                          {{ node.status === 'online' ? '在线' : '离线' }}
+                        </el-tag>
+                      </div>
                     </div>
                   </el-option>
                 </el-option-group>
@@ -1702,7 +1745,15 @@ onMounted(async () => {
                 >
                   <div class="flex items-center justify-between">
                     <span>{{ node.name }}</span>
-                    <el-tag size="small" type="info">{{ node.ip }}</el-tag>
+                    <div class="flex items-center">
+                      <el-tag size="small" type="info" style="margin-right: 4px;">{{ node.ip }}</el-tag>
+                      <el-tag 
+                        size="small" 
+                        :type="node.status === 'online' ? 'success' : 'danger'"
+                      >
+                        {{ node.status === 'online' ? '在线' : '离线' }}
+                      </el-tag>
+                    </div>
                   </div>
                 </el-option>
               </el-option-group>
@@ -1712,8 +1763,8 @@ onMounted(async () => {
       </el-card>
     </div>
 
-    <!-- 主内容区域，当防火墙未运行时添加遮罩 -->
-    <div :class="{ mask: firewallStatus !== 'running' }">
+    <!-- 主内容区域，当防火墙未运行或节点离线时添加遮罩 -->
+    <div :class="{ mask: firewallStatus !== 'running' || nodeOfflineMask }">
       <!-- 选项卡导航 -->
       <el-tabs v-model="activeTab" class="mb-4">
         <el-tab-pane label="端口规则" name="port">
@@ -2167,6 +2218,11 @@ onMounted(async () => {
       <!-- 如果防火墙未运行，显示提示卡片 -->
       <el-card v-if="firewallStatus !== 'running' && maskShow" class="mask-prompt mb-4">
         <span>防火墙未启动</span>
+      </el-card>
+      
+      <!-- 如果节点离线，显示提示卡片 -->
+      <el-card v-if="nodeOfflineMask" class="mask-prompt mb-4" style="background-color: #FEF0F0; color: #F56C6C;">
+        <span>节点离线，无法操作</span>
       </el-card>
     </div>
 
