@@ -358,7 +358,7 @@ const clientTab = ref('docker')
 const clientForm = reactive({
   name: '',
   host: '',
-  port: 45876,
+  port: 2222,
   pubkey: 'ssh-ed25519 AAAAC3NzaC1ZDI1NTE5...'
 })
 
@@ -393,9 +393,9 @@ async function getHostPublicKey(): Promise<string> {
 // 打开添加客户端弹窗时，获取公钥
 async function openAddClientDialog() {
   addClientDialogVisible.value = true
-  clientForm.name = ''
+  clientForm.name = 'root'
   clientForm.host = ''
-  clientForm.port = 45876
+  clientForm.port = 2222
   clientForm.pubkey = ''
   const pubkey = await getHostPublicKey()
   if (pubkey) clientForm.pubkey = pubkey
@@ -406,7 +406,7 @@ function closeAddClientDialog() {
 }
 
 function copyCommand() {
-  const command: string = clientTab.value === 'docker' ? 'docker-compose.yml内容' : 'Linux安装命令内容'
+  const command: string = clientTab.value === 'docker' ? 'docker-compose.yml内容' : 'curl -sL https://raw.githubusercontent.com/Hedeoer/agent/refs/heads/main/scripts/install/install_agent.sh -o install-agent.sh && chmod +x install-agent.sh && ./install-agent.sh -k "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"'
   if ((window as any).navigator && (window as any).navigator.clipboard) {
     (window as any).navigator.clipboard.writeText(command)
     toastSuccess('命令已复制')

@@ -26,6 +26,7 @@ declare global {
   const batchDeleteDictItemApi: typeof import('./api/system/dictItem')['batchDeleteDictItemApi']
   const batchDeleteFileApi: typeof import('./api/system/file')['batchDeleteFileApi']
   const batchDeleteMenuApi: typeof import('./api/system/menu')['batchDeleteMenuApi']
+  const batchDeleteNodeApi: typeof import('./api/agents/node')['batchDeleteNodeApi']
   const batchDeleteRoleApi: typeof import('./api/system/role')['batchDeleteRoleApi']
   const batchDeleteUserApi: typeof import('./api/system/user')['batchDeleteUserApi']
   const breakpoints: typeof import('./hooks/ui')['breakpoints']
@@ -64,6 +65,7 @@ declare global {
   const deleteFileApi: typeof import('./api/system/file')['deleteFileApi']
   const deleteJobApi: typeof import('./api/job/job')['deleteJobApi']
   const deleteMenuApi: typeof import('./api/system/menu')['deleteMenuApi']
+  const deleteNodeApi: typeof import('./api/agents/node')['deleteNodeApi']
   const deletePortRulesApi: typeof import('./api/agents/firewall')['deletePortRulesApi']
   const deleteRoleApi: typeof import('./api/system/role')['deleteRoleApi']
   const deleteUserApi: typeof import('./api/system/user')['deleteUserApi']
@@ -467,6 +469,7 @@ declare module 'vue' {
     readonly batchDeleteDictItemApi: UnwrapRef<typeof import('./api/system/dictItem')['batchDeleteDictItemApi']>
     readonly batchDeleteFileApi: UnwrapRef<typeof import('./api/system/file')['batchDeleteFileApi']>
     readonly batchDeleteMenuApi: UnwrapRef<typeof import('./api/system/menu')['batchDeleteMenuApi']>
+    readonly batchDeleteNodeApi: UnwrapRef<typeof import('./api/agents/node')['batchDeleteNodeApi']>
     readonly batchDeleteRoleApi: UnwrapRef<typeof import('./api/system/role')['batchDeleteRoleApi']>
     readonly batchDeleteUserApi: UnwrapRef<typeof import('./api/system/user')['batchDeleteUserApi']>
     readonly breakpoints: UnwrapRef<typeof import('./hooks/ui')['breakpoints']>
@@ -505,6 +508,7 @@ declare module 'vue' {
     readonly deleteFileApi: UnwrapRef<typeof import('./api/system/file')['deleteFileApi']>
     readonly deleteJobApi: UnwrapRef<typeof import('./api/job/job')['deleteJobApi']>
     readonly deleteMenuApi: UnwrapRef<typeof import('./api/system/menu')['deleteMenuApi']>
+    readonly deleteNodeApi: UnwrapRef<typeof import('./api/agents/node')['deleteNodeApi']>
     readonly deletePortRulesApi: UnwrapRef<typeof import('./api/agents/firewall')['deletePortRulesApi']>
     readonly deleteRoleApi: UnwrapRef<typeof import('./api/system/role')['deleteRoleApi']>
     readonly deleteUserApi: UnwrapRef<typeof import('./api/system/user')['deleteUserApi']>
