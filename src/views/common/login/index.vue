@@ -14,9 +14,11 @@ const router = useRouter()
 const refForm = ref()
 const verifyCode = ref<string>('')
 const verifyCodeMaxLength = ref<number>(5)
+// 根据当前环境决定是否预填充账号密码
+// 只在开发环境预填充，生产环境表单保持为空
 const loginForm = reactive<LoginParam>({
-  account: 'zetaAdmin',
-  password: 'admin',
+  account: import.meta.env.DEV ? 'zetaAdmin' : '',
+  password: import.meta.env.DEV ? 'admin' : '',
   code: '',
   key: '',
   remember: true,
