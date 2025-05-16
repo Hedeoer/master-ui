@@ -405,8 +405,16 @@ function closeAddClientDialog() {
   addClientDialogVisible.value = false
 }
 
-function copyCommand() {
-  const command: string = clientTab.value === 'docker' ? 'docker-compose.yml内容' : 'curl -sL https://raw.githubusercontent.com/Hedeoer/agent/refs/heads/main/scripts/install/install_agent.sh -o install-agent.sh && chmod +x install-agent.sh && ./install-agent.sh -k "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"'
+async function copyCommand() {
+  // 获取主机公钥
+  const pubkey = await getHostPublicKey()
+  
+  // 构建命令
+  const baseCommand = 'curl -sL https://raw.githubusercontent.com/Hedeoer/agent/refs/heads/main/scripts/install/install_agent.sh -o install-agent.sh && chmod +x install-agent.sh'
+  const command: string = clientTab.value === 'docker' 
+    ? 'docker-compose.yml内容' 
+    : `${baseCommand} && ./install-agent.sh -k "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" -s "${pubkey}" -p ${clientForm.port}`
+  
   if ((window as any).navigator && (window as any).navigator.clipboard) {
     (window as any).navigator.clipboard.writeText(command)
     toastSuccess('命令已复制')
